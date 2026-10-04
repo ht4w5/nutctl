@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "GET_GAME_MODE",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, /dev/hidraw2) via internal/protocol over the hidraw transport \u2014 docs/capture.md Method A; 64-byte reports",
+  "unverified": "units of sleepTime (5) and keyDelay (3) are still open (docs/protocol.md \u00a76)"
+}

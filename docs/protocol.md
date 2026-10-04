@@ -22,6 +22,10 @@ something, it is marked **(infer)** or listed under "Open questions".
 - USB transfer uses **output report id 0**, report length taken from the HID descriptor
   (`outputReports[0].items[0].reportCount`, **32 bytes** on the reference device).
   Some 2.4G commands come in `..._64_BYTE` variants, so 64-byte devices exist.
+  **(observed 2026-10)** a real NUT87 (`0c45:880c`, firmware 1.20) exposes
+  **64-byte** input/output reports on its `0xFF68` interface, so chunk payloads are
+  56 bytes there; report length must come from the descriptor (recorded:
+  `testdata/captures/get_device_info/nut87.*`).
 
 ## 2. Framing
 
@@ -56,6 +60,8 @@ byte 8..    : data
 ```
 
 - Response is matched by `cmd`, optionally by `addr`.
+  **(observed 2026-10)** `lenOrType` is the payload length of the chunk and `addr`
+  the transfer offset, mirroring the request header (real NUT87, firmware 1.20).
 - Timeout 500 ms default (1000 ms SET_KEY, 2000 ms on `frameVersion == 1` firmware),
   3 retries. After final failure the app tears down the HID device and reconnects.
 - Command `0x1C` (GET_DEFAULT_FN_KEY_MATRIX) is optional: no response is tolerated.
@@ -270,11 +276,18 @@ NUT87 ranges: brightness 1..6, speed 1..6, custom effects `[23,24,25]`.
    `MPT` (no construction site in the bundle; editor lives in a lazy chunk we don't have)
    and `MACRO` param2/param3 (pass-through, believed unused).
 4. `GET_LED_DATA` / animation frame binary format (only needed for the LED editor).
-5. Whether report size is 32 on all platforms, and behavior of the `..._64_BYTE` variants.
+5. ~~Whether report size is 32 on all platforms, and behavior of the `..._64_BYTE` variants.~~
+   — **closed for the wired NUT87**: it reports **64-byte** reports (interface `0xFF68`,
+   firmware 1.20, recorded 2026-10 in `testdata/captures/`); the 32-byte figure is the
+   vendor app's fallback default. The 2.4G `..._64_BYTE` variants remain untested
+   (2.4G is out of scope for v0).
 6. ~~Meaning of every `gameMode` byte~~ — **closed** for reportRate (`{1K:3,2K:4,4K:5,8K:6}`;
    `wirelessReportRate` = raw Hz u16 LE). Remaining field meanings (keyDelay units,
    sleepTime encoding, systemMode, powerMode) need one read-back experiment each.
-7. Whether `COMMUNICATION_START/END` (cmd 1/2) must be sent around sessions.
+7. ~~Whether `COMMUNICATION_START/END` (cmd 1/2) must be sent around sessions.~~
+   — **closed for the v0 read path**: `GET_DEVICE_INFO`/`GET_GAME_MODE` succeed without
+   them on firmware 1.20 (active probing 2026-10, `testdata/captures/`). Whether any
+   SET command needs them stays open until the write path is recorded.
 
 Everything needed for the v1 feature set (keymap, Fn layer, lighting effect + per-key
 RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–7 only

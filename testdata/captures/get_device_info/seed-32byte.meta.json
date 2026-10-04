@@ -1,0 +1,10 @@
+{
+  "case": "seed-32byte",
+  "cmd": "GET_DEVICE_INFO",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.06",
+  "captureMethod": "synthesized",
+  "source": "synthesized from docs/protocol.md \u00a72 (vendor bundle) chunk layout and the \u00a74 payload field map; multi-chunk framing golden",
+  "unverified": "synthesized before hardware was reachable: 32-byte reports and response lenOrType/addr are placeholders (the real Device reports 64-byte reports \u2014 see the nut87 case)"
+}

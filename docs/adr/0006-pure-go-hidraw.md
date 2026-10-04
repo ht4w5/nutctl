@@ -17,3 +17,9 @@ Consequences: `CGO_ENABLED=0` single static binary; we own enumeration and permi
 (the udev rule ships in-repo); the Transport seam keeps a hidapi adapter trivially
 addable — and that adapter would be the project's only cgo — if Windows/macOS support
 ever happens.
+
+Implementation note (2026-10): the report descriptor is read from sysfs
+(`.../device/report_descriptor`) instead of `HIDIOCGRDESC`, which is simpler and keeps
+the same properties (pure Go, no cgo); no ioctls are needed for the v0 surface.
+Feature reports (only the OTA path needs them — out of scope) would add
+`HIDIOCGFEATURE`/`HIDIOCSFEATURE`.

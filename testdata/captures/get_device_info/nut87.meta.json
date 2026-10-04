@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "GET_DEVICE_INFO",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, /dev/hidraw2) via internal/protocol over the hidraw transport \u2014 docs/capture.md Method A; 64-byte reports",
+  "unverified": "response lenOrType = payload length and addr = transfer offset are observed on hardware (they follow the request convention); COMMUNICATION_START/END was not sent and the Device answered anyway"
+}
