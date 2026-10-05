@@ -23,7 +23,9 @@ const (
 	CmdGetFnKey         byte = 22
 
 	// The write commands of the v0 surface (docs/protocol.md §3). Each SET
-	// writes one complete block in one batched transfer (docs/protocol.md §4).
+	// writes one complete block in one batched transfer (docs/protocol.md §4);
+	// SET_FACTORY_RESET is the exception — one fire-and-forget report (reset.go).
+	CmdSetFactoryReset  byte = 15
 	CmdSetGameMode      byte = 33
 	CmdSetKey           byte = 34
 	CmdSetLEDEffect     byte = 35

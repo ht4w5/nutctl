@@ -30,6 +30,28 @@ func KeyActionText(a KeyAction) string {
 	return fmt.Sprintf("%s(%02x %02x %02x)", a.Type, a.Params[0], a.Params[1], a.Params[2])
 }
 
+// NotifyText renders one device notify for humans (one spelling,
+// protocol/text.go): the listener name the bundle gives it where one exists,
+// and the wire type where the bytes are observed but unnamed.
+func NotifyText(n Notify) string {
+	switch n.Kind {
+	case NotifyDeviceNotify:
+		return fmt.Sprintf("device notify (type %d)", n.Type)
+	case Notify24GDisconnect:
+		return "2.4G disconnect"
+	case NotifyDeviceReset:
+		return "device reset"
+	case Notify24GSleep:
+		return "2.4G sleep"
+	case Notify24GWake:
+		return "2.4G wake"
+	case Notify24GOther:
+		return fmt.Sprintf("2.4G notify (type %d)", n.Type)
+	default:
+		return fmt.Sprintf("notify (kind %d type %d)", n.Kind, n.Type)
+	}
+}
+
 // FirmwareStatusText renders the firmware status (GET_DEVICE_INFO,
 // docs/protocol.md §4) for humans. The bootloader state names its
 // consequence: writes are refused there (ADR-0003).
@@ -84,6 +106,12 @@ func DirectionText(v uint8) string {
 // Model advertises for it (device.Model.Lighting).
 func RangeText(v, min, max uint8) string {
 	return fmt.Sprintf("%d (range %d-%d)", v, min, max)
+}
+
+// HexBytes renders a report's bytes as lowercase hex ("55 fc 04"), the one
+// spelling of raw wire bytes every UI shows.
+func HexBytes(b []byte) string {
+	return fmt.Sprintf("% x", b)
 }
 
 // HexRGB renders a color as "#rrggbb".

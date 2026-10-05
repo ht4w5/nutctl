@@ -142,6 +142,21 @@ func (d *Device) SendReport(_ uint8, report []byte) error {
 // Reports implements hid.Transport.
 func (d *Device) Reports() <-chan []byte { return d.reports }
 
+// Inject delivers unsolicited input reports (device notify traffic) as if
+// the Device had pushed them — the seam's lever for `nutctl watch` and the
+// notification stream. Reports injected before a session starts sit in the
+// buffer until it reads them; injecting into a closed Device is a no-op.
+func (d *Device) Inject(reports ...[]byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return
+	}
+	for _, r := range reports {
+		d.reports <- bytes.Clone(r)
+	}
+}
+
 // Close implements hid.Transport.
 func (d *Device) Close() error {
 	d.mu.Lock()

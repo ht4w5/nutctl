@@ -136,7 +136,7 @@ func runLoad(args []string, deps Deps) int {
 		fmt.Fprintln(deps.Stderr, "refusing to write: the Device must pass its self-checks before the first write (ADR-0003)")
 		return 1
 	}
-	if err := writeGate(deps, *skipGolden, device.StateFileFor(model, di.Version, st.State)); err != nil {
+	if err := writeGate(deps, stdinReader(deps), *skipGolden, device.StateFileFor(model, di.Version, st.State)); err != nil {
 		return fail(deps, err)
 	}
 
@@ -162,6 +162,16 @@ func runLoad(args []string, deps Deps) int {
 	return 0
 }
 
+// stdinReader is the one buffered reader over the invocation's stdin: the
+// prompts of one invocation share it, so an answer buffered for one prompt is
+// never lost to the next. Nil when there is no input at all.
+func stdinReader(deps Deps) *bufio.Reader {
+	if deps.Stdin == nil {
+		return nil
+	}
+	return bufio.NewReader(deps.Stdin)
+}
+
 // writeGate is the golden-read prompt of ADR-0003 before the session's first
 // write: it OFFERS to save the current Device state to a State File
 // (golden-<ts>.json — the default filename is offered, never forced,
@@ -169,16 +179,15 @@ func runLoad(args []string, deps Deps) int {
 // spec user story 5) and unlocks the write; the noisy --i-know-what-im-doing
 // flag skips the prompt for scripts. No input at all is not consent either
 // way: the write is refused with the flag named.
-func writeGate(deps Deps, skip bool, golden device.StateFile) error {
+func writeGate(deps Deps, reader *bufio.Reader, skip bool, golden device.StateFile) error {
 	if skip {
 		fmt.Fprintln(deps.Stderr, "warning: --i-know-what-im-doing: skipping the golden read — the Device's current state is NOT saved anywhere (ADR-0003)")
 		return nil
 	}
-	if deps.Stdin == nil {
+	if reader == nil {
 		return errNoGoldenAnswer
 	}
 	name := device.GoldenName(time.Now())
-	reader := bufio.NewReader(deps.Stdin)
 	for {
 		fmt.Fprintf(deps.Stderr, "%s ", device.GoldenPrompt(name))
 		line, err := reader.ReadString('\n')

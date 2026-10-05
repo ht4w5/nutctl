@@ -111,6 +111,49 @@ func StateDiffs(from, to State, m Model) []string {
 	return diffs
 }
 
+// Changes counts what changed between two States, per block: the same
+// "which bytes are state" rule StateDiffs applies — raw Key Action bytes for
+// a Key Slot, colors only for a Per-Key entry (the ledId byte is derived on
+// write and never state, StateFile), and the Lighting Effect's state fields
+// only (its wire markers are not state either) — as counts instead of named
+// rows. `nutctl reset`'s read-back prints these (ticket 08); StateDiffs is
+// the named-rows spelling of the same rule.
+type Changes struct {
+	Base     int  // changed Key Slots on the Base Layer
+	Fn       int  // changed Key Slots on the Fn Layer
+	PerKey   int  // changed Per-Key RGB entries
+	Lighting bool // the Lighting Effect changed
+	Settings bool // the Settings block changed
+}
+
+// ChangesBetween counts the changes from → to in every block.
+func ChangesBetween(from, to State) Changes {
+	var c Changes
+	for i := range from.Base {
+		if from.Base[i].Raw != to.Base[i].Raw {
+			c.Base++
+		}
+	}
+	for i := range from.Fn {
+		if from.Fn[i].Raw != to.Fn[i].Raw {
+			c.Fn++
+		}
+	}
+	for i := range from.PerKey {
+		w, g := from.PerKey[i], to.PerKey[i]
+		if w.R != g.R || w.G != g.G || w.B != g.B {
+			c.PerKey++
+		}
+	}
+	lf, lt := from.Lighting, to.Lighting
+	c.Lighting = lf.Mode != lt.Mode || lf.Direction != lt.Direction ||
+		lf.RGB != lt.RGB || lf.SecondaryRGB != lt.SecondaryRGB ||
+		lf.ColorMode != lt.ColorMode || lf.Brightness != lt.Brightness ||
+		lf.Speed != lt.Speed || lf.EffectModeType != lt.EffectModeType
+	c.Settings = from.Settings != to.Settings
+	return c
+}
+
 // SlotTag is the parenthetical display name of a Key Slot from the Model's
 // layout table — the tag the diff's names carry (`Key Slot 0 (Esc)`,
 // `per-key RGB entry 0 (Esc)`): ` (Esc)`, or empty for a Key Slot outside

@@ -43,6 +43,8 @@ type Device struct {
 	waitMu sync.Mutex
 	waiter *waiter // currently awaited response, if any
 
+	notify chan []byte // input reports no transfer consumed (Notifications)
+
 	frameVersion uint8 // from GET_DEVICE_INFO; selects the timeout
 }
 
@@ -54,7 +56,7 @@ func Open(t hid.Transport, opts Options) (*Device, error) {
 	if opts.MaxRetries <= 0 {
 		opts.MaxRetries = DefaultMaxRetries
 	}
-	d := &Device{t: t, opts: opts}
+	d := &Device{t: t, opts: opts, notify: make(chan []byte, notifyBuffer)}
 	go d.readLoop()
 	return d, nil
 }
@@ -64,24 +66,41 @@ func (d *Device) Close() error {
 	return d.t.Close()
 }
 
+// notifyBuffer is the unsolicited-report stream's capacity: `nutctl watch`
+// drains it live, and when nobody is watching notify traffic is dropped
+// rather than ever blocking the wire.
+const notifyBuffer = 256
+
+// Notifications delivers the input reports no transfer consumed: device
+// notify traffic and anything else the Device pushes unsolicited
+// (docs/protocol.md §2). The channel closes when the Device disappears. The
+// stream is observability, never a transfer: reports are dropped when no
+// reader keeps up.
+func (d *Device) Notifications() <-chan []byte { return d.notify }
+
 // readLoop owns reading input reports: matching responses go to the current
-// waiter, everything else (garbage, notifications) is dropped — the transfer
-// layer times out and retries on garbage, exactly like the vendor app, whose
-// response waiter only accepts well-formed reports for the awaited command.
+// waiter, everything else (garbage, notifications) goes to the Notifications
+// stream — the transfer layer times out and retries on garbage, exactly like
+// the vendor app, whose response waiter only accepts well-formed reports for
+// the awaited command.
 func (d *Device) readLoop() {
+	defer close(d.notify)
 	for raw := range d.t.Reports() {
 		resp, err := ParseResponse(raw)
-		if err != nil {
-			continue
-		}
-		d.waitMu.Lock()
-		w := d.waiter
-		d.waitMu.Unlock()
-		if w == nil || !w.matches(resp) {
-			continue
+		if err == nil {
+			d.waitMu.Lock()
+			w := d.waiter
+			d.waitMu.Unlock()
+			if w != nil && w.matches(resp) {
+				select {
+				case w.ch <- raw:
+				default:
+				}
+				continue
+			}
 		}
 		select {
-		case w.ch <- raw:
+		case d.notify <- raw:
 		default:
 		}
 	}

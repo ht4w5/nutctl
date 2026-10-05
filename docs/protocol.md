@@ -370,6 +370,56 @@ table.
 `tftMaxFrames/gifMaxFrames/ledMaxFrames`), `GET/SET_TRIGGER_KEY`,
 `GET/SET_MAGNETIC_AXIS_*` (Hall-effect boards, not NUT87).
 
+### SET_FACTORY_RESET — one fire-and-forget report
+
+**(extracted 2026-10-06, ticket 08, from the bundle's own encoders — not
+hardware-verified: a factory reset is destructive and is never run against
+hardware unattended.)**
+
+```
+byte 0     : 0xAA                magic
+byte 1     : 0x0F                SET_FACTORY_RESET
+byte 2     : scope               KEY_RESET 1, LIGHTING_RESET 2, MACRO_RESET 4,
+                                 CLEAR_CALIBRATION 5, RESET_ALL 255
+byte 3..7  : 0
+byte 8..   : 0                   zero-padded to the report length
+```
+
+- The scope rides in header byte 2 (the "len" position of other commands);
+  there is no payload and **no response is awaited**. The bundle's
+  `factoryReset` (`rs`) builds exactly this frame via
+  `xn(SET_FACTORY_RESET, scope, 0, undefined, reportCount)` and then sleeps
+  100 ms before touching the Device again.
+- Scopes are the bundle's `FACTORY_RESET_TYPE` (`ls`). The vendor's own
+  confirmation text for the reset is "Are you sure you want to reset? This
+  will reset all keyboard settings." (`en-cKmNgyvw.js` `reset_message` /
+  `resettingAllText`). What RESET_ALL covers beyond keys, lighting and macros
+  (e.g. the Settings block) is unverified — a read-back reports it either way.
+- The keyboard can also reset itself: the Function "Restore factory settings
+  (FN R_ALT ESC)" (the hard chord the vendor locale names) — it announces
+  that with a reset notify (below).
+
+### Device notify traffic (unsolicited input reports)
+
+**(extracted 2026-10-06, ticket 08, from the bundle's notify listeners — not
+hardware-verified.)** The Device pushes notify frames on the input stream;
+they are never answers to a request, and the bundle only ever installs
+listeners for them (all in `decoded/layout-classic-DSv6_q0d.js`):
+
+| report | meaning | bundle listener |
+|---|---|---|
+| `55 FA <type> …` | device notify (GET_DEVICE_NOTIFY); the type-6 listener reads byte 3 as a state flag | `Qu` (`startDeviceStateListener`) |
+| `55 FC 04 …` | 2.4G disconnect | `fu` (`start24GDisconnectListener`) |
+| `55 FC 05 …` | device reset (e.g. the keyboard's own factory-reset chord) | `vu` (`startResetListener`) |
+| `55 FC 06 …` | 2.4G sleep | `yu` (`start24GSleepListener`) |
+| `A6 FF 01 …` | 2.4G wake (out-of-band magic — not a `0x55` frame) | `gu` (`start24GWakeListener`) |
+
+`nutctl watch` streams exactly these: named where a listener names them, and
+every other input report kept visible as raw bytes (a late response or garbage
+is shown, not hidden). The stream is observability, never a transfer: its
+buffer is bounded and reports are dropped when no reader keeps up, so a slow
+terminal can never block the wire.
+
 ## 5. Misc
 
 - CRC16-CCITT (poly `0x1021`, init `0xFFFF`) is implemented in the bundle — used by

@@ -24,6 +24,17 @@ type Deps struct {
 	Stdin   io.Reader // the write gate's golden-read prompt reads it
 	Stdout  io.Writer
 	Stderr  io.Writer
+	// Context cancels a long-running command (nutctl watch streams until it
+	// is done); nil means context.Background().
+	Context context.Context
+}
+
+// ctx is the invocation's context (never nil).
+func (d Deps) ctx() context.Context {
+	if d.Context != nil {
+		return d.Context
+	}
+	return context.Background()
 }
 
 const usageText = `nutctl — configure the WEIKAV NUT87 keyboard
@@ -39,6 +50,9 @@ usage:
   nutctl save <file> [--device P]            write the Device's current state to a State File
   nutctl load <file> [--device P] [--i-know-what-im-doing]
                                              apply a State File to the Device (write-gated)
+  nutctl reset --keys|--lighting|--macros|--all [--device P] [--i-know-what-im-doing]
+                                             factory reset one scope (typed confirmation, write-gated)
+  nutctl watch [--device P]                  stream device notify traffic live (read-only)
 
 Bare nutctl opens the TUI (ADR-0004); the commands above are its scriptable
 side (see PLAN.md).
@@ -73,6 +87,10 @@ func Run(args []string, deps Deps) int {
 		return runSave(args[1:], deps)
 	case "load":
 		return runLoad(args[1:], deps)
+	case "reset":
+		return runReset(args[1:], deps)
+	case "watch":
+		return runWatch(args[1:], deps)
 	case "help", "--help", "-h":
 		fmt.Fprint(deps.Stdout, usageText)
 		return 0
