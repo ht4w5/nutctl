@@ -81,8 +81,9 @@ type fault struct {
 }
 
 // nut87 returns a fake NUT87 that answers the full v0 read pass from the
-// fixtures recorded off real hardware (64-byte reports).
-func nut87(t *testing.T, path string) *hidfake.Device {
+// fixtures recorded off real hardware (64-byte reports), with optional
+// response faults patched in.
+func nut87(t *testing.T, path string, faults ...fault) *hidfake.Device {
 	t.Helper()
 	d := hidfake.New(hid.Info{
 		Path:         path,
@@ -93,7 +94,7 @@ func nut87(t *testing.T, path string) *hidfake.Device {
 		UsagePage:    0xFF68,
 		ReportLength: 64,
 	})
-	replayReadPath(d, t)
+	replayReadPath(d, t, faults...)
 	return d
 }
 
@@ -263,7 +264,7 @@ Device
   State Files: [s] save current state   [l] load a State File onto the Device
 
 status: ready
-help: 1-4/tab switch screen · s save · l load · q quit`)
+help: 1-4/tab switch screen · s save · l load · a apply · r revert · q quit`)
 }
 
 // The four screens are navigable with `1`–`4` and `tab` (spec acceptance);
@@ -281,7 +282,7 @@ Keys
   (placeholder — this screen is not built yet; the Device screen reads, saves and loads state)
 
 status: ready
-help: 1-4/tab switch screen · s save · l load · q quit`)
+help: 1-4/tab switch screen · s save · l load · a apply · r revert · q quit`)
 
 	drive(t, m, key("4"))
 	if got := frame(m); !strings.Contains(got, "1 Device  2 Keys  3 Lighting  [4 Settings]") {
@@ -345,7 +346,7 @@ Device
   State Files: [s] save current state   [l] load — refused while read-only
 
 status: ready
-help: 1-4/tab switch screen · s save · l load · q quit`)
+help: 1-4/tab switch screen · s save · l load · a apply · r revert · q quit`)
 }
 
 // A bootloader Device is clearly read-only (spec acceptance): the banner
@@ -379,7 +380,7 @@ Device
   State Files: [s] save current state   [l] load — refused while read-only
 
 status: ready
-help: 1-4/tab switch screen · s save · l load · q quit`)
+help: 1-4/tab switch screen · s save · l load · a apply · r revert · q quit`)
 
 	before := len(d.Sent())
 	drive(t, m, key("l"))

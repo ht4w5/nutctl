@@ -7,6 +7,8 @@ package device
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ht4w5/nutctl/internal/protocol"
 )
 
 // Connection is how a Device is reached (CONTEXT.md). The NUT87 is USB; it
@@ -35,8 +37,8 @@ func (id Identity) USBID() string {
 	return fmt.Sprintf("%04x:%04x", id.VendorID, id.ProductID)
 }
 
-// Model is a keyboard product (CONTEXT.md). New Models are data: identity
-// plus, later, a layout table and capability set.
+// Model is a keyboard product (CONTEXT.md). New Models are data: identity,
+// a layout table (internal/device/layouts) and a capability set.
 type Model struct {
 	Name        string
 	Connection  Connection
@@ -44,6 +46,12 @@ type Model struct {
 	ProductID   uint16
 	ProductName string // exact match on the USB product string
 	Supported   bool   // false for known sibling Models: identified, never configured
+	// ReportRates is the capability set for the Settings block's Report Rate
+	// (CONTEXT.md: the NUT87 offers 1K/4K/8K): the wire values this Model's
+	// firmware accepts, in ascending order — what an editor may offer. The
+	// vendor config carries the same list (settingsConfig.reportRateList,
+	// in Hz), so this is data observed, not a guess.
+	ReportRates []protocol.ReportRate
 }
 
 // Known Models. NUT75 shares the NUT87's USB product id; it is recognized so
@@ -53,6 +61,9 @@ var (
 		Name: "NUT87", Connection: ConnectionUSB,
 		VendorID: 0x0C45, ProductID: 0x880C, ProductName: "NUT87",
 		Supported: true,
+		ReportRates: []protocol.ReportRate{
+			protocol.ReportRate1K, protocol.ReportRate4K, protocol.ReportRate8K,
+		},
 	}
 	NUT75 = Model{
 		Name: "NUT75", Connection: ConnectionUSB,

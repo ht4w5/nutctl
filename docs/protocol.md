@@ -174,6 +174,22 @@ no TFT, no trigger/performance/HE features (config: `isShowAutoCalibration:false
 | 8 | topDeadZone | `value*100` on wire | | |
 | 9 | bottomDeadZone | `value*100` on wire | | |
 
+**(observed 2026-10-05, vendor bundle `decoded/layout-classic-DSv6_q0d.js`,
+settings view + its `Dv()` composable — closes the value-domain half of §6.6):**
+
+- `keyDelay` is a discrete level: the UI's `keyDelayList` offers only
+  `[{value:1}..{value:5}]` and reads `keyDelay ?? 3`. No physical unit is
+  exposed anywhere in the bundle.
+- `sleepTime` is **minutes**: the UI's slider is `min:1 max:30 step:1` with
+  marks `{1:"1min",10:"10min",20:"20min",30:"30min"}`; sleep off writes `0`
+  (`handleSleepModeToggle`: off → 0, on → at least 1).
+- `fnSwitch` has no UI at all — the app round-trips the byte
+  (`l[2]=s.fnSwitch||0` on SET). Treat it as a plain 0/1 switch and claim no
+  semantics beyond that.
+- `reportRateList` is per-Model config: every NUT87-family entry carries
+  `reportRateList:[1e3,4e3,8e3]` (Hz) → offers 1K/4K/8K = wire `3/5/6`,
+  matching what the hardware reads (§6.6).
+
 ### GET_KEY / GET_FN_KEY — 512 bytes = 128 slots × 4 bytes
 
 ```
@@ -323,8 +339,11 @@ entry's raw bytes carry `AA 55` at 510..511). **(observed 2026-10-05, ticket
    vendor app's fallback default. The 2.4G `..._64_BYTE` variants remain untested
    (2.4G is out of scope for v0).
 6. ~~Meaning of every `gameMode` byte~~ — **closed** for reportRate (`{1K:3,2K:4,4K:5,8K:6}`;
-   `wirelessReportRate` = raw Hz u16 LE). Remaining field meanings (keyDelay units,
-   sleepTime encoding, systemMode, powerMode) need one read-back experiment each.
+   `wirelessReportRate` = raw Hz u16 LE) and **closed 2026-10-05 for the v0 Settings
+   editor** via the vendor bundle's own settings UI (see §4): `keyDelay` is a level
+   1..5, `sleepTime` is minutes (0 = never, 1..30), `fnSwitch` is an opaque 0/1
+   switch the app round-trips without ever showing it. Remaining field meanings
+   (systemMode, powerMode) need one read-back experiment each.
 7. ~~Whether `COMMUNICATION_START/END` (cmd 1/2) must be sent around sessions.~~
    — **closed for the v0 read path**: `GET_DEVICE_INFO`/`GET_GAME_MODE` succeed without
    them on firmware 1.20 (active probing 2026-10, `testdata/captures/`).

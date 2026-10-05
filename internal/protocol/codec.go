@@ -128,6 +128,17 @@ func (r *ReportRate) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Settings value domains (docs/protocol.md §4, closed 2026-10-05 by the
+// vendor bundle's own settings UI): key delay is a discrete level — the
+// vendor app offers only 1..5 and defaults to 3 — and sleep is minutes,
+// 0 = never, 1..30. Editors step inside these domains; reads outside them
+// are shown as reported, never rewritten.
+const (
+	KeyDelayMin     uint8 = 1
+	KeyDelayMax     uint8 = 5
+	SleepMinutesMax uint8 = 30
+)
+
 // Settings is the decoded GET_GAME_MODE / SET_GAME_MODE payload
 // (docs/protocol.md §4, 56 bytes; fields run to offset 20).
 type Settings struct {

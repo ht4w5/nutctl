@@ -5,11 +5,14 @@
 // states and errors are visible, never silent (ADR-0003).
 //
 // The TUI is a view over the device layer, not a second source of truth: it
-// renders the state one read pass produced and emits intents (save, load)
-// that go through the same device.Session, write gate and read-back
-// verification as the CLI. Every screen renders as a plain frame, so tests
-// drive it with key messages against the fake Device and assert golden
-// frames (the spec's second test seam).
+// renders the state one read pass produced plus ONE local edit buffer, and
+// emits intents (save, load, apply) that go through the same
+// device.Session, write gate and read-back verification as the CLI. The
+// edit mechanics — local buffer, pending changes in the status bar, `a`
+// apply, `r` revert — are shared by every edit screen (edit.go). Every
+// screen renders as a plain frame, so tests drive it with key messages
+// against the fake Device and assert golden frames (the spec's second test
+// seam).
 package tui
 
 import (
@@ -38,9 +41,10 @@ type Deps struct {
 	Now     func() time.Time // clock for the golden-read filename (tests pin it)
 }
 
-// The four screens (PLAN Phase 5), in `1`–`4` order. The Keys, Lighting and
-// Settings screens are placeholders until their tickets land; the shell, the
-// Device screen and the State File actions are this build's surface.
+// The four screens (PLAN Phase 5), in `1`–`4` order. The Keys and Lighting
+// screens are placeholders until their tickets land; the shell, the Device
+// screen, the State File actions and the Settings screen's edit mechanics
+// are this build's surface.
 type screen int
 
 const (
@@ -79,7 +83,8 @@ type Model struct {
 	deps Deps
 
 	session  *device.Session    // nil: no Device (openErr names why)
-	state    device.State       // the last full read pass (the Device's state)
+	state    device.State       // the last full read pass (the Device's actual state)
+	local    device.State       // the local edit buffer: pending until `a` (edit.go)
 	checkErr *device.CheckError // self-check failure, shown and gating writes
 	openErr  error              // why there is no session
 
@@ -87,15 +92,17 @@ type Model struct {
 	mode   mode
 
 	ti      textinput.Model // the State File path prompt
-	pending loadRequest     // the Load waiting at the write gate
+	request writeRequest    // the write waiting at (or past) the gate
 	golden  string          // filename the write gate offers for the golden read
+	sel     settingRow      // the Settings screen's row cursor
 
 	notice []string // supporting lines of the last action (warnings, diffs)
 	status string   // the status bar: what just happened / what is true now
 	wrote  bool     // this session has passed the write gate (ADR-0003)
 	busy   bool     // an action is running off the event loop: keys wait
 
-	quitting bool
+	quitConfirm bool // `q` was pressed once with unsaved changes
+	quitting    bool
 }
 
 // New opens the Device and makes ONE checked full read pass (the session
@@ -128,6 +135,7 @@ func New(deps Deps) *Model {
 	}
 	m.session = s
 	m.state = st
+	m.local = st
 	return m
 }
 
@@ -200,10 +208,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updateNormal is the shell: screens with `1`–`4` and `tab`, the Device
-// screen's Save/Load actions, `q` to quit.
+// screen's Save/Load actions, the edit mechanics' `a`/`r` (edit.go), `q` to
+// quit — then the active screen's own keys.
 func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() != "q" {
+		m.quitConfirm = false
+	}
 	switch msg.String() {
 	case "q":
+		if len(m.pendingDiffs()) > 0 && !m.quitConfirm {
+			// Unsaved changes are never silently lost — not even on quit.
+			m.quitConfirm = true
+			m.notice = nil
+			m.status = "unsaved changes will be lost — press q again to discard them, or r to revert"
+			return m, nil
+		}
 		m.quitting = true
 		return m, tea.Quit
 	case "1", "2", "3", "4":
@@ -220,7 +239,22 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.notice = nil
 			return m, nil
 		}
+		if n := len(m.pendingDiffs()); n > 0 {
+			// A load over pending edits would silently lose them (ticket 05).
+			m.status = "refusing to load: " + plural(n, "pending change") + " — apply or revert it first"
+			m.notice = nil
+			return m, nil
+		}
 		m.enterPath(modeLoadPath)
+	case "a":
+		return m.startApply()
+	case "r":
+		m.revert()
+		return m, nil
+	default:
+		if m.screen == screenSettings {
+			return m.updateSettings(msg)
+		}
 	}
 	return m, nil
 }
@@ -258,7 +292,14 @@ func (m *Model) View() string {
 	lines = append(lines, m.body()...)
 	lines = append(lines, "")
 	lines = append(lines, m.notice...)
-	lines = append(lines, "status: "+m.status, "help: "+m.help())
+	if p := m.pendingLine(); p != "" {
+		lines = append(lines, p)
+	}
+	status := "status: " + m.status
+	if m.busy {
+		status += " — working…"
+	}
+	lines = append(lines, status, "help: "+m.help())
 	return strings.Join(lines, "\n")
 }
 
@@ -316,6 +357,9 @@ func (m *Model) body() []string {
 	if m.screen == screenDevice {
 		return m.deviceBody()
 	}
+	if m.screen == screenSettings {
+		return m.settingsBody()
+	}
 	return m.placeholderBody()
 }
 
@@ -333,9 +377,17 @@ func (m *Model) help() string {
 	case modeSavePath, modeLoadPath:
 		return "enter confirm · esc cancel · ctrl+c quit"
 	case modeGate:
-		return "y/enter save the golden read and load · n skip the golden read · esc cancel · ctrl+c quit"
+		return "y/enter save the golden read and " + m.request.kind.verb + " · n skip the golden read · esc cancel · ctrl+c quit"
 	}
-	return "1-4/tab switch screen · s save · l load · q quit"
+	return "1-4/tab switch screen · s save · l load · a apply · r revert · q quit"
+}
+
+// plural spells counts for the status bar: "1 change" / "2 changes".
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 // errorView is what a Device that cannot be opened looks like: the error and

@@ -150,7 +150,7 @@ func runLoad(args []string, deps Deps) int {
 	}
 	if len(diffs) > 0 {
 		fmt.Fprintln(deps.Stdout, "wrote 4 blocks in batched writes: base, fn, lighting (Lighting Effect + Per-Key RGB), settings")
-		fmt.Fprintln(deps.Stdout, device.DiffHeader(len(diffs)))
+		fmt.Fprintln(deps.Stdout, device.DiffHeader(len(diffs), "State File"))
 		for _, d := range diffs {
 			fmt.Fprintf(deps.Stdout, "  %s\n", d)
 		}
