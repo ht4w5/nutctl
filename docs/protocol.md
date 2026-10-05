@@ -62,8 +62,13 @@ byte 8..    : data
 - Response is matched by `cmd`, optionally by `addr`.
   **(observed 2026-10)** `lenOrType` is the payload length of the chunk and `addr`
   the transfer offset, mirroring the request header (real NUT87, firmware 1.20).
-- Timeout 500 ms default (1000 ms SET_KEY, 2000 ms on `frameVersion == 1` firmware),
-  3 retries. After final failure the app tears down the HID device and reconnects.
+- Timeout 500 ms default (1000 ms SET_KEY, 2000 ms SET_CUSTOM_LED_DATA and on
+  `frameVersion == 1` firmware), 3 retries. After final failure the app tears down the
+  HID device and reconnects.
+  **(observed 2026-10-05)** SET commands are answered per chunk like reads, and the
+  NUT87's ack echoes the written block back (`55 <cmd> <len> <addr>` + the chunk
+  payload; recorded as `testdata/captures/set_*` — a write-back experiment on real
+  hardware, firmware 1.20).
 - Command `0x1C` (GET_DEFAULT_FN_KEY_MATRIX) is optional: no response is tolerated.
 - Multi-chunk transfers are reassembled by concatenating `response[8:]` of each chunk,
   then truncating to the requested `contentSize`.
@@ -236,9 +241,10 @@ NUT87 ranges: brightness 1..6, speed 1..6, custom effects `[23,24,25]`.
 falsified by hardware. The `0xAA 0x55` marker was observed at the block TAIL
 instead: bytes 510..511 of both keymap blocks read `AA 55` (whole tail
 `00 00 AA 55`, slot 127 raw = `00 00 aa 55`), and the Per-Key RGB block has
-the same tail. Working theory (unverified, see §6.8): `0xAA 0x55` at the
-Lighting Effect's offsets 14..15 is written only by the vendor app's
-SET_LED_EFFECT path, `00 00` is the factory/unwritten state.
+the same tail. **Verified 2026-10-05 (§6.8, ticket 03 write path):** the SET
+format's `0xAA 0x55` at offsets 14..15 is a "written" flag — after
+SET_LED_EFFECT the Device reads `AA 55` there (and `0xFF` at offset 4)
+forever after, factory/unwritten reads `00 00`.
 
 ### GET_CUSTOM_LED_DATA / SET_CUSTOM_LED_DATA — 512 bytes
 
@@ -248,7 +254,9 @@ SET_LED_EFFECT path, `00 00` is the factory/unwritten state.
 **(observed 2026-10-05)** the recorded factory block (firmware 1.20,
 `testdata/captures/get_custom_led_data/`) is all zeroes except the same tail
 marker as the keymap blocks: bytes 508..511 = `00 00 AA 55` (so the last
-entry's raw bytes carry `AA 55` at 510..511).
+entry's raw bytes carry `AA 55` at 510..511). **(observed 2026-10-05, ticket
+03)** after SET_CUSTOM_LED_DATA the ledId bytes read back as the entry INDEX
+(the write forces `l[f]=i`, §4) where a factory block reads `0` throughout.
 
 ### Key action semantics (`param1..3` per pageType)
 
@@ -319,18 +327,23 @@ entry's raw bytes carry `AA 55` at 510..511).
    sleepTime encoding, systemMode, powerMode) need one read-back experiment each.
 7. ~~Whether `COMMUNICATION_START/END` (cmd 1/2) must be sent around sessions.~~
    — **closed for the v0 read path**: `GET_DEVICE_INFO`/`GET_GAME_MODE` succeed without
-   them on firmware 1.20 (active probing 2026-10, `testdata/captures/`). Whether any
-   SET command needs them stays open until the write path is recorded.
-8. **Check codes: the documented location was falsified (observed 2026-10-05,
-   real NUT87, firmware 1.20, `testdata/captures/`).** The bundle puts
-   `0xAA 0x55` at GET_LED_EFFECT offsets 14..15; hardware reads `00 00` there
-   (factory/unwritten) and shows the `0xAA 0x55` marker at the block TAIL
+   them on firmware 1.20 (active probing 2026-10, `testdata/captures/`).
+   **Closed for the v0 write path too (2026-10-05, ticket 03):**
+   SET_KEY/SET_FN_KEY/SET_LED_EFFECT/SET_CUSTOM_LED_DATA/SET_GAME_MODE all land and
+   verify read-back byte-for-byte without them (firmware 1.20 write-back experiment,
+   `testdata/captures/set_*`).
+8. ~~Check codes: the documented location was falsified~~ — **closed 2026-10-05
+   (ticket 03 write path, real NUT87 firmware 1.20, `testdata/captures/set_*`).**
+   The bundle puts `0xAA 0x55` at GET_LED_EFFECT offsets 14..15; hardware reads `00 00`
+   there (factory/unwritten) and shows the `0xAA 0x55` marker at the block TAIL
    instead (`00 00 AA 55` at bytes 508..511 of GET_KEY, GET_FN_KEY **and**
-   GET_CUSTOM_LED_DATA). Open question — the SET path's check codes: does
-   SET_LED_EFFECT write `0xAA 0x55` at offsets 14..15, so a read-back after a
-   write shows it? If yes, the pair doubles as a "written" flag; if read-back
-   still shows `00 00`, the claim describes the SET wire format only. Closes
-   with the write path's SET_LED_EFFECT read-back capture (ticket 03).
+   GET_CUSTOM_LED_DATA). The SET path's answer, by experiment: **SET_LED_EFFECT writes
+   `0xAA 0x55` at offsets 14..15 and the Device reports it back on every later read —
+   the pair doubles as a "written" flag** (offset 4 reads back `0xFF` the same way).
+   The block-tail marker survives SET_KEY/SET_FN_KEY/SET_CUSTOM_LED_DATA byte for
+   byte, and SET_CUSTOM_LED_DATA's forced `ledId = index` sticks (entry *i* reads back
+   ledId *i*, factory blocks read `0` everywhere). Each of the five SET blocks was
+   written back and read back **byte-for-byte identical**.
 
 Everything needed for the v1 feature set (keymap, Fn layer, lighting effect + per-key
 RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–8 only

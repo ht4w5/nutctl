@@ -21,6 +21,14 @@ const (
 	CmdGetLEDEffect     byte = 19
 	CmdGetCustomLEDData byte = 20
 	CmdGetFnKey         byte = 22
+
+	// The write commands of the v0 surface (docs/protocol.md §3). Each SET
+	// writes one complete block in one batched transfer (docs/protocol.md §4).
+	CmdSetGameMode      byte = 33
+	CmdSetKey           byte = 34
+	CmdSetLEDEffect     byte = 35
+	CmdSetCustomLEDData byte = 36
+	CmdSetFnKey         byte = 38
 )
 
 // Payload sizes of the v0 commands (docs/protocol.md §4).

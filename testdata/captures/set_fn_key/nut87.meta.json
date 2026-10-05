@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "SET_FN_KEY",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, firmware 1.20) via internal/protocol over the hidraw transport — docs/capture.md Method A; write-back of the Device's own state read moments earlier (ticket 03 write path verification); 64-byte reports, 10 request reports and 10 ack reports",
+  "unverified": "the ack reports beyond the echoed cmd are ignored by the transfer engine (write responses match by cmd only); their content is recorded as observed"
+}

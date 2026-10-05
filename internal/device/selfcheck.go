@@ -193,9 +193,10 @@ func checkLayout(model Model, in CheckInput) error {
 // 0x00 0x00 there). Any other pair is corruption or misalignment and fails
 // loudly, naming the observed bytes.
 //
-// The open question this observation raises closes with ticket 03's
-// SET_LED_EFFECT read-back: once the tool writes a Lighting Effect, the
-// read-back must show 0xAA 0x55 at offsets 14..15.
+// The open question this observation raised is closed (ticket 03's
+// SET_LED_EFFECT read-back, firmware 1.20): after a write the Device reads
+// 0xAA 0x55 at offsets 14..15 — the pair is a "written" flag (docs/protocol.md
+// §6.8). Both states remain accepted here.
 func checkLighting(_ Model, in CheckInput) error {
 	checkCode := in.Lighting.CheckCode
 	if checkCode == [2]byte{protocol.CheckCodeByte0, protocol.CheckCodeByte1} ||

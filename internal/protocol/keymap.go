@@ -1,8 +1,10 @@
 package protocol
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // KeyActionType is the Key Action page type (docs/protocol.md §4 `Dt` table).
@@ -94,6 +96,98 @@ type KeyAction struct {
 // Keymap is a decoded Layer: 128 Key Slots, index = Key Slot id.
 type Keymap [128]KeyAction
 
+// keyActionDoc is the State File row of one Key Slot (internal/device marshals
+// Key Actions into a State File): the page-type label and hex byte strings
+// with the spelling the --json output uses. Raw is the wire truth; type and
+// params are derived from it on marshal, validated against it on unmarshal.
+type keyActionDoc struct {
+	Type   *string `json:"type,omitempty"`
+	Params *string `json:"params,omitempty"`
+	Raw    *string `json:"raw,omitempty"`
+}
+
+// MarshalJSON renders the Key Action as its State File row: page-type label,
+// param bytes and raw wire bytes.
+func (a KeyAction) MarshalJSON() ([]byte, error) {
+	typ := a.Type.String()
+	params := fmt.Sprintf("%02x %02x %02x", a.Params[0], a.Params[1], a.Params[2])
+	raw := fmt.Sprintf("%02x %02x %02x %02x", a.Raw[0], a.Raw[1], a.Raw[2], a.Raw[3])
+	return json.Marshal(keyActionDoc{Type: &typ, Params: &params, Raw: &raw})
+}
+
+// UnmarshalJSON parses a State File row. Raw is the wire truth and the only
+// source of it: type and params are optional readability fields, validated
+// against raw when present. A row that disagrees with itself is a loud error,
+// never a silent guess.
+func (a *KeyAction) UnmarshalJSON(b []byte) error {
+	var doc keyActionDoc
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return err
+	}
+	if doc.Raw == nil {
+		return fmt.Errorf("needs raw (4 hex bytes): the raw wire bytes are the Key Action's truth")
+	}
+	raw, err := parseHexBytes(*doc.Raw, 4)
+	if err != nil {
+		return fmt.Errorf("raw %w", err)
+	}
+	got := KeyAction{
+		Type:   keyActionType(raw[0]),
+		Params: [3]byte{raw[1], raw[2], raw[3]},
+		Raw:    [4]byte{raw[0], raw[1], raw[2], raw[3]},
+	}
+	if doc.Type != nil && *doc.Type != got.Type.String() {
+		return fmt.Errorf("type %q disagrees with raw %q (which decodes as %s)",
+			*doc.Type, *doc.Raw, got.Type)
+	}
+	if doc.Params != nil {
+		params, err := parseHexBytes(*doc.Params, 3)
+		if err != nil {
+			return fmt.Errorf("params %w", err)
+		}
+		if params[0] != got.Params[0] || params[1] != got.Params[1] || params[2] != got.Params[2] {
+			return fmt.Errorf("params %q disagrees with raw %q", *doc.Params, *doc.Raw)
+		}
+	}
+	*a = got
+	return nil
+}
+
+// parseHexBytes parses n space-separated hex bytes, e.g. "02 00 29 00".
+func parseHexBytes(s string, n int) ([]byte, error) {
+	fields := strings.Fields(s)
+	if len(fields) != n {
+		return nil, fmt.Errorf("%q is %d byte(s), want %d (space-separated hex bytes)", s, len(fields), n)
+	}
+	out := make([]byte, n)
+	for i, f := range fields {
+		v, err := hex.DecodeString(f)
+		if err != nil || len(v) != 1 {
+			return nil, fmt.Errorf("%q: %q is not a hex byte", s, f)
+		}
+		out[i] = v[0]
+	}
+	return out, nil
+}
+
+// UnmarshalJSON parses the Key Slot table of a State File block: exactly 128
+// rows in slot order, failures naming the Key Slot.
+func (km *Keymap) UnmarshalJSON(b []byte) error {
+	var rows []json.RawMessage
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return err
+	}
+	if len(rows) != len(km) {
+		return fmt.Errorf("has %d rows, want %d (one per Key Slot)", len(rows), len(*km))
+	}
+	for i := range rows {
+		if err := json.Unmarshal(rows[i], &km[i]); err != nil {
+			return fmt.Errorf("Key Slot %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // DecodeKeymap decodes a reassembled GET_KEY / GET_FN_KEY payload
 // (docs/protocol.md §4: 128 Key Slots × 4 bytes). Every slot decodes —
 // unknown page types become the ActionUnknown marker with their raw bytes.
@@ -111,6 +205,33 @@ func DecodeKeymap(b []byte) (Keymap, error) {
 		}
 	}
 	return km, nil
+}
+
+// EncodeKeymap encodes a Keymap into its 512-byte GET_KEY / SET_KEY payload
+// (docs/protocol.md §4: 128 Key Slots x 4 bytes). Each Key Slot encodes to
+// its wire bytes via wireBytes — raw bytes preserved by decode, or derived
+// from Type and Params for a constructed Key Action. The whole block is
+// written in one batched transfer (SET_KEY / SET_FN_KEY).
+func EncodeKeymap(km Keymap) []byte {
+	out := make([]byte, KeymapSize)
+	for i, a := range km {
+		raw := a.wireBytes()
+		copy(out[i*4:], raw[:])
+	}
+	return out
+}
+
+// wireBytes is the 4-byte wire form of a Key Action (docs/protocol.md §4
+// page-type table). Decoded Key Actions reproduce their raw bytes exactly;
+// a constructed one derives them from Type and Params. FUNC_V2 and the
+// explicit UNKNOWN marker carry their page byte in Raw[0].
+func (a KeyAction) wireBytes() [4]byte {
+	page := byte(a.Type)
+	switch a.Type {
+	case ActionFuncV2, ActionUnknown:
+		page = a.Raw[0]
+	}
+	return [4]byte{page, a.Params[0], a.Params[1], a.Params[2]}
 }
 
 // keyActionType maps a wire pageType to its KeyActionType: the Dt table

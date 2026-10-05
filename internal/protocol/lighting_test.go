@@ -1,6 +1,11 @@
 package protocol
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 // The check code (bytes 14..15) is decoded into CheckCode (raw) and
 // CheckCodeOK (a recognized state), never enforced: a wrong check code is a
@@ -69,5 +74,95 @@ func TestDecodePerKeyRGBFields(t *testing.T) {
 	}
 	if rgb[127] != (PerKeyLED{}) {
 		t.Errorf("entry 127 = %+v, want the zero entry", rgb[127])
+	}
+}
+
+// The write path (ticket 03): SET_LED_EFFECT's wire format is documented in
+// docs/protocol.md §4 and quoted from the bundle — byte 4 (driverSetting) is
+// forced to 0xFF and the check code at 14..15 to 0xAA 0x55 on every write.
+// Those two positions are wire markers of the SET format, not state.
+func TestEncodeLightingEffectUsesSetWireFormat(t *testing.T) {
+	effect := LightingEffect{
+		Mode:           5,
+		RGB:            [3]byte{1, 2, 3},
+		DriverSetting:  0, // whatever was read; the SET format forces 0xFF
+		SecondaryRGB:   [3]byte{4, 5, 6},
+		ColorMode:      7,
+		Brightness:     4,
+		Speed:          2,
+		Direction:      1,
+		EffectModeType: 3,
+		CheckCode:      [2]byte{0, 0}, // read state; the SET format forces 0xAA 0x55
+	}
+	want := []byte{5, 1, 2, 3, 0xFF, 4, 5, 6, 7, 4, 2, 1, 3, 0, 0xAA, 0x55}
+	if got := EncodeLightingEffect(effect); !bytes.Equal(got, want) {
+		t.Errorf("EncodeLightingEffect = %X, want %X", got, want)
+	}
+}
+
+// The write path (ticket 03): SET_CUSTOM_LED_DATA writes the entry INDEX as
+// the ledId (docs/protocol.md §4, quoted from the bundle: `l[f]=i`) — the
+// ledId byte is derived on write, never taken from the block.
+func TestEncodePerKeyRGBWritesIndexAsLEDID(t *testing.T) {
+	var rgb PerKeyRGB
+	rgb[0] = PerKeyLED{LEDID: 9, R: 0x10, G: 0x20, B: 0x30} // ledId ignored
+	rgb[127] = PerKeyLED{LEDID: 127, R: 0xAA, G: 0xBB, B: 0xCC}
+
+	got := EncodePerKeyRGB(rgb)
+	if want := []byte{0, 0x10, 0x20, 0x30}; !bytes.Equal(got[0:4], want) {
+		t.Errorf("entry 0 = %X, want %X (ledId must be the index)", got[0:4], want)
+	}
+	if want := []byte{127, 0xAA, 0xBB, 0xCC}; !bytes.Equal(got[127*4:128*4], want) {
+		t.Errorf("entry 127 = %X, want %X", got[127*4:128*4], want)
+	}
+}
+
+// State File JSON of the Lighting Effect (ticket 03): only the fields that
+// are Device state. driverSetting and the check code are wire markers the
+// SET format forces (0xFF, 0xAA 0x55 — docs/protocol.md §4), so a State File
+// never carries them and save → load → save round-trips regardless of what
+// the Device reports at those positions.
+func TestLightingEffectStateJSONOmitsWireMarkers(t *testing.T) {
+	e := LightingEffect{
+		Mode: 5, RGB: [3]byte{1, 2, 3}, DriverSetting: 0xFF,
+		SecondaryRGB: [3]byte{4, 5, 6}, ColorMode: 7, Brightness: 4,
+		Speed: 2, Direction: 1, EffectModeType: 3, CheckCode: [2]byte{0xAA, 0x55}, CheckCodeOK: true,
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	for _, marker := range []string{"driverSetting", "checkCode", "checkCodeOk"} {
+		if strings.Contains(string(b), marker) {
+			t.Errorf("Marshal = %s, want no %q (a wire marker of the SET format, not state)", b, marker)
+		}
+	}
+	var got LightingEffect
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.Mode != 5 || got.RGB != [3]byte{1, 2, 3} || got.Brightness != 4 || got.EffectModeType != 3 {
+		t.Errorf("round trip = %+v, want the state fields preserved", got)
+	}
+}
+
+// State File JSON of a Per-Key RGB entry: the color only. The ledId byte is
+// the entry index on the wire (the SET format writes `i` there), so it is
+// derived data, never state.
+func TestPerKeyLEDStateJSONOmitsLEDID(t *testing.T) {
+	e := PerKeyLED{LEDID: 9, R: 0x10, G: 0x20, B: 0x30}
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if want := `{"r":16,"g":32,"b":48}`; string(b) != want {
+		t.Errorf("Marshal = %s, want %s", b, want)
+	}
+	var got PerKeyLED
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got != (PerKeyLED{R: 0x10, G: 0x20, B: 0x30}) {
+		t.Errorf("round trip = %+v, want the color preserved and ledId derived", got)
 	}
 }

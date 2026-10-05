@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 )
 
 // DeviceInfo is the decoded GET_DEVICE_INFO payload (docs/protocol.md §4,
@@ -105,6 +106,28 @@ func (r ReportRate) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.String())
 }
 
+// UnmarshalJSON parses the rate from its label ("4K"), the inverse of
+// MarshalJSON — State Files carry the label.
+func (r *ReportRate) UnmarshalJSON(b []byte) error {
+	var label string
+	if err := json.Unmarshal(b, &label); err != nil {
+		return err
+	}
+	switch label {
+	case "1K":
+		*r = ReportRate1K
+	case "2K":
+		*r = ReportRate2K
+	case "4K":
+		*r = ReportRate4K
+	case "8K":
+		*r = ReportRate8K
+	default:
+		return fmt.Errorf("unknown Report Rate %q (want 1K, 2K, 4K or 8K)", label)
+	}
+	return nil
+}
+
 // Settings is the decoded GET_GAME_MODE / SET_GAME_MODE payload
 // (docs/protocol.md §4, 56 bytes; fields run to offset 20).
 type Settings struct {
@@ -152,6 +175,32 @@ func DecodeSettings(b []byte) (Settings, error) {
 		WirelessReportRate: u16le(b[18:]),
 		PowerMode:          b[20],
 	}, nil
+}
+
+// EncodeSettings encodes Settings into its 56-byte GET_GAME_MODE /
+// SET_GAME_MODE payload (docs/protocol.md §4): zero at offsets 0, 10, 12 and
+// 13, dead zones as value*100, wirelessReportRate u16 LE. Byte-exact with
+// the vendor bundle's SET_GAME_MODE encoder.
+func EncodeSettings(s Settings) []byte {
+	out := make([]byte, SettingsSize)
+	out[1] = s.GameMode
+	out[2] = s.FnSwitch
+	out[3] = s.SleepTime
+	out[4] = s.KeyDelay
+	out[5] = byte(s.ReportRate)
+	out[6] = s.SystemMode
+	out[7] = s.TFTDisplayTime
+	out[8] = byte(math.Round(s.TopDeadZone * 100))
+	out[9] = byte(math.Round(s.BottomDeadZone * 100))
+	out[11] = s.StabilityMode
+	out[14] = s.AutoCalibration
+	out[15] = s.SingleKeyWakeup
+	out[16] = s.PushButtonMode
+	out[17] = s.NKROSwitch
+	out[18] = byte(s.WirelessReportRate)
+	out[19] = byte(s.WirelessReportRate >> 8)
+	out[20] = s.PowerMode
+	return out
 }
 
 func u16le(b []byte) uint16 {

@@ -2,8 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -12,7 +17,15 @@ import (
 	"github.com/ht4w5/nutctl/internal/hidfake"
 )
 
-const fixturesDir = "../../testdata/captures"
+// fixturesDir is resolved to an absolute path up front: the State File tests
+// chdir into scratch directories (the golden read writes to the CWD).
+var fixturesDir = func() string {
+	abs, err := filepath.Abs("../../testdata/captures")
+	if err != nil {
+		panic(err)
+	}
+	return abs
+}()
 
 func loadFixture(t *testing.T, cmd, name string) fixture.Exchange {
 	t.Helper()
@@ -47,6 +60,53 @@ type fault struct {
 	data []byte // replacement bytes
 }
 
+// newNut87Fake returns an UNSCRIPTED fake NUT87 (identity only), for tests
+// that script whole sessions themselves — as opposed to nut87, whose fake
+// already answers one full read path.
+func newNut87Fake(t *testing.T, path string) *hidfake.Device {
+	t.Helper()
+	return hidfake.New(hid.Info{
+		Path:         path,
+		VendorID:     0x0C45,
+		ProductID:    0x880C,
+		ProductName:  "NUT87",
+		Manufacturer: "hfdic",
+		UsagePage:    0xFF68,
+		ReportLength: 64,
+	})
+}
+
+// replayReadPath scripts one full read pass (probe + the five blocks) against
+// a fake.
+func replayReadPath(d *hidfake.Device, t *testing.T) {
+	t.Helper()
+	for _, x := range readPathFixtures(t) {
+		d.Replay(x)
+	}
+}
+
+// replaySets scripts one full batched apply: the recorded set_* exchanges, in
+// the order `load` writes the blocks.
+func replaySets(d *hidfake.Device, t *testing.T) {
+	t.Helper()
+	for _, x := range setFixtures(t) {
+		d.Replay(x)
+	}
+}
+
+// setFixtures are the recorded write exchanges of one full apply, in the
+// order `load` writes the blocks.
+func setFixtures(t *testing.T) []fixture.Exchange {
+	t.Helper()
+	return []fixture.Exchange{
+		loadFixture(t, "set_key", "nut87"),
+		loadFixture(t, "set_fn_key", "nut87"),
+		loadFixture(t, "set_led_effect", "nut87"),
+		loadFixture(t, "set_custom_led_data", "nut87"),
+		loadFixture(t, "set_game_mode", "nut87"),
+	}
+}
+
 // nut87 returns a scripted fake NUT87 that answers the full v0 read path from
 // the fixtures recorded off real hardware (64-byte reports).
 func nut87(t *testing.T, path string) *hidfake.Device {
@@ -59,15 +119,7 @@ func nut87(t *testing.T, path string) *hidfake.Device {
 // binding.
 func nut87Faulty(t *testing.T, path string, faults ...fault) *hidfake.Device {
 	t.Helper()
-	d := hidfake.New(hid.Info{
-		Path:         path,
-		VendorID:     0x0C45,
-		ProductID:    0x880C,
-		ProductName:  "NUT87",
-		Manufacturer: "hfdic",
-		UsagePage:    0xFF68,
-		ReportLength: 64,
-	})
+	d := newNut87Fake(t, path)
 	for _, x := range readPathFixtures(t) {
 		for _, f := range faults {
 			if f.cmd != x.Cmd {
@@ -84,8 +136,20 @@ func nut87Faulty(t *testing.T, path string, faults ...fault) *hidfake.Device {
 
 func run(t *testing.T, enum hid.Enumerator, args ...string) (int, string, string) {
 	t.Helper()
+	return runStdin(t, enum, "", args...)
+}
+
+// runStdin is run with scripted standard input — the write gate's golden-read
+// prompt reads it.
+func runStdin(t *testing.T, enum hid.Enumerator, stdin string, args ...string) (int, string, string) {
+	t.Helper()
 	var out, errOut bytes.Buffer
-	code := Run(args, Deps{Devices: enum, Stdout: &out, Stderr: &errOut})
+	code := Run(args, Deps{
+		Devices: enum,
+		Stdin:   strings.NewReader(stdin),
+		Stdout:  &out,
+		Stderr:  &errOut,
+	})
 	return code, out.String(), errOut.String()
 }
 
@@ -4049,5 +4113,627 @@ func TestGetUsageErrors(t *testing.T) {
 		if !strings.Contains(errOut, "nutctl:") {
 			t.Errorf("%v: stderr missing a usage error:\n%s", args, errOut)
 		}
+	}
+}
+
+// --- State Files (ticket 03) ---
+//
+// The State File format is a contract, tested as external behavior: bytes on
+// disk through the CLI seam with temporary files (the spec's Testing
+// Decisions — no new seam).
+
+// stateFileEnvelope asserts the file at path has exactly the documented
+// envelope: model, firmware, schema, state, with the five state blocks.
+func stateFileEnvelope(t *testing.T, path string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read State File: %v", err)
+	}
+	if !strings.HasPrefix(string(raw), "{\n  \"model\": \"NUT87\",") {
+		t.Errorf("State File must be pretty-printed JSON with the envelope first, got:\n%.80s", raw)
+	}
+	if !strings.HasSuffix(string(raw), "}\n") {
+		t.Error("State File must end with a trailing newline")
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("State File does not decode: %v", err)
+	}
+	if got := sortedKeys(doc); !reflect.DeepEqual(got, []string{"firmware", "model", "schema", "state"}) {
+		t.Errorf("envelope keys = %v, want exactly [firmware model schema state]", got)
+	}
+	if doc["model"] != "NUT87" || doc["firmware"] != "1.20" || doc["schema"] != float64(1) {
+		t.Errorf("envelope = model %v firmware %v schema %v, want NUT87 / 1.20 / 1",
+			doc["model"], doc["firmware"], doc["schema"])
+	}
+	state, ok := doc["state"].(map[string]any)
+	if !ok {
+		t.Fatalf("state = %v, want an object", doc["state"])
+	}
+	if got := sortedKeys(state); !reflect.DeepEqual(got, []string{"base", "fn", "lighting", "perKeyRgb", "settings"}) {
+		t.Errorf("state keys = %v, want exactly [base fn lighting perKeyRgb settings]", got)
+	}
+	return state
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func TestSaveWritesStateFileEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	d := nut87(t, "/dev/hidraw3")
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	code, out, errOut := run(t, enum, "save", path)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if !strings.Contains(out, path) {
+		t.Errorf("save output %q does not name the file it wrote", out)
+	}
+	state := stateFileEnvelope(t, path)
+
+	base := state["base"].([]any)
+	if len(base) != 128 {
+		t.Fatalf("base has %d rows, want 128 Key Slots", len(base))
+	}
+	esc := base[0].(map[string]any)
+	if esc["type"] != "KEYBOARD" || esc["params"] != "00 29 00" || esc["raw"] != "02 00 29 00" {
+		t.Errorf("base slot 0 (Esc) = %v, want KEYBOARD(00 29 00)", esc)
+	}
+
+	lighting := state["lighting"].(map[string]any)
+	for _, marker := range []string{"driverSetting", "checkCode", "checkCodeOk"} {
+		if _, ok := lighting[marker]; ok {
+			t.Errorf("state.lighting carries %q — the SET format forces it on write, it is not state", marker)
+		}
+	}
+	if lighting["brightness"] != float64(6) || lighting["mode"] != float64(11) {
+		t.Errorf("lighting = mode %v brightness %v, want mode 11 brightness 6", lighting["mode"], lighting["brightness"])
+	}
+
+	entry := state["perKeyRgb"].([]any)[0].(map[string]any)
+	if got := sortedKeys(entry); !reflect.DeepEqual(got, []string{"b", "g", "r"}) {
+		t.Errorf("perKeyRgb entry keys = %v, want [b g r] (ledId is the index on the wire, never state)", got)
+	}
+
+	settings := state["settings"].(map[string]any)
+	if settings["reportRate"] != "8K" || settings["sleepTime"] != float64(5) {
+		t.Errorf("settings = reportRate %v sleepTime %v, want 8K / 5", settings["reportRate"], settings["sleepTime"])
+	}
+}
+
+func TestSaveNeedsAFilePath(t *testing.T) {
+	d := nut87(t, "/dev/hidraw3")
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	code, _, errOut := run(t, enum, "save")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (usage error)", code)
+	}
+	if !strings.Contains(errOut, "State File path") {
+		t.Errorf("stderr = %q, want the missing path named", errOut)
+	}
+}
+
+// TestLoadRoundTrip is the ticket-03 round-trip property, as external
+// behavior: save → load → save yields identical State Files. The fake Device
+// replays the recorded write exchanges (the real set_* fixtures) for the
+// apply in between; the load's read-back verification must pass clean.
+func TestLoadRoundTrip(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	for i := 0; i < 2; i++ { // save 1 and load's pre-write read pass
+		for _, x := range readPathFixtures(t) {
+			d.Replay(x)
+		}
+	}
+	replaySets(d, t)         // the batched writes
+	for i := 0; i < 2; i++ { // load's read-back pass and save 2
+		for _, x := range readPathFixtures(t) {
+			d.Replay(x)
+		}
+	}
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, errOut := run(t, enum, "save", "a.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	code, out, errOut := run(t, enum, "load", "a.json", "--i-know-what-im-doing")
+	if code != 0 {
+		t.Fatalf("load exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if !strings.Contains(out, "read-back verified: the Device matches the State File") {
+		t.Errorf("load output missing the verification result:\n%s", out)
+	}
+	if code, _, errOut := run(t, enum, "save", "b.json"); code != 0 {
+		t.Fatalf("save 2 exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+
+	a, err := os.ReadFile("a.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("b.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Error("save → load → save changed the State File; round trip must be identical")
+	}
+}
+
+// A State File saved from another Model is refused before anything is
+// written (spec user story 25): no SET request reaches the Device.
+func TestLoadRefusesStateFileFromAnotherModel(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save only
+	replayReadPath(d, t) // load's probe + read pass — no writes may follow
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, errOut := run(t, enum, "save", "friend.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	raw, err := os.ReadFile("friend.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := strings.Replace(string(raw), `"model": "NUT87"`, `"model": "NUT75"`, 1)
+	if err := os.WriteFile("friend.json", []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, errOut := run(t, enum, "load", "friend.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (refused)", code)
+	}
+	for _, want := range []string{"wrong Model", "NUT75", "NUT87", "refusing to load"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut)
+		}
+	}
+}
+
+// A firmware mismatch warns but proceeds (spec user story 26).
+func TestLoadWarnsOnFirmwareMismatchButProceeds(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	replayReadPath(d, t) // load pre-write read pass
+	replaySets(d, t)
+	replayReadPath(d, t) // read-back
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, errOut := run(t, enum, "save", "old.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	raw, err := os.ReadFile("old.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := strings.Replace(string(raw), `"firmware": "1.20"`, `"firmware": "1.19"`, 1)
+	if err := os.WriteFile("old.json", []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := run(t, enum, "load", "old.json", "--i-know-what-im-doing")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (proceed) (stderr: %s)", code, errOut)
+	}
+	for _, want := range []string{"warning", "1.19", "1.20", "proceeding"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut)
+		}
+	}
+	if !strings.Contains(out, "read-back verified") {
+		t.Errorf("load did not proceed to the writes:\n%s", out)
+	}
+}
+
+// Writes are refused while the Device reports bootloader/firmware-recovery
+// state (spec user story 28) — before the self-checks, before the prompt.
+func TestLoadRefusesBootloaderDevice(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save against the healthy fake
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	if code, _, errOut := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+
+	// firmwareStatus lives at data offset 32 = report offset 40 of the
+	// GET_DEVICE_INFO response.
+	boot := nut87Faulty(t, "/dev/hidraw3",
+		fault{cmd: "GET_DEVICE_INFO", res: 0, off: 40, data: []byte{1}})
+	for _, x := range readPathFixtures(t) {
+		if x.Cmd != "GET_DEVICE_INFO" {
+			boot.Replay(x) // only the probe may run; nothing else may be reached
+		}
+	}
+	enum = &hidfake.Enumerator{Devices: []*hidfake.Device{boot}}
+
+	code, _, errOut := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (refused)", code)
+	}
+	for _, want := range []string{"refusing to write", "bootloader"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut)
+		}
+	}
+}
+
+// The session's first write requires the self-checks passing (ADR-0003):
+// a Device that fails them is never written to.
+func TestLoadRefusesFailedSelfChecks(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	if code, _, errOut := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+
+	// Break the keymap block-tail marker: a misaligned/corrupt read fails
+	// self-check 2 loudly (ticket 02's detector).
+	bad := nut87Faulty(t, "/dev/hidraw3",
+		fault{cmd: "GET_KEY", res: 9, off: 8 + 6, data: []byte{0x00}}) // block bytes 508..511 ride in chunk 9
+	replayReadPath(bad, t)
+	enum = &hidfake.Enumerator{Devices: []*hidfake.Device{bad}}
+
+	code, _, errOut := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (refused)", code)
+	}
+	if !strings.Contains(errOut, "self-check failed:") {
+		t.Errorf("stderr missing the self-check failure:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "refusing to write") {
+		t.Errorf("stderr missing the write refusal:\n%s", errOut)
+	}
+}
+
+// The golden read of ADR-0003 (spec user stories 4, 5): the session's first
+// write offers to save the current Device state first — the default filename
+// is offered, never forced (ADR-0005: no file activity the user did not ask
+// for).
+
+// goldenFiles lists the golden reads written into the (scratch) CWD.
+func goldenFiles(t *testing.T) []string {
+	t.Helper()
+	files, err := filepath.Glob("golden-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// loadSession scripts one `load` invocation: probe + pre-write read pass,
+// the batched writes, and the read-back pass.
+func loadSession(d *hidfake.Device, t *testing.T) {
+	t.Helper()
+	replayReadPath(d, t)
+	replaySets(d, t)
+	replayReadPath(d, t)
+}
+
+func TestLoadGoldenReadPromptSavesBeforeWriting(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	loadSession(d, t)
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, errOut := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	code, out, errOut := runStdin(t, enum, "y\n", "load", "state.json")
+	if code != 0 {
+		t.Fatalf("load exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if !strings.Contains(errOut, "save current state to ./golden-") || !strings.Contains(errOut, "? [Y/n]") {
+		t.Errorf("stderr missing the golden-read prompt:\n%s", errOut)
+	}
+	files := goldenFiles(t)
+	if len(files) != 1 {
+		t.Fatalf("golden reads written = %v, want exactly one", files)
+	}
+	state := stateFileEnvelope(t, files[0]) // the golden read is a State File — one code path
+	if len(state["base"].([]any)) != 128 {
+		t.Error("golden read does not carry the full state")
+	}
+	if !strings.Contains(errOut, "golden read saved to ./"+files[0]) {
+		t.Errorf("stderr missing where the golden read went:\n%s", errOut)
+	}
+	if !strings.Contains(out, "read-back verified") {
+		t.Errorf("load did not proceed to the writes:\n%s", out)
+	}
+}
+
+func TestLoadGoldenReadPromptDeclineWritesWithoutSaving(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	loadSession(d, t)
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	code, out, errOut := runStdin(t, enum, "n\n", "load", "state.json")
+	if code != 0 {
+		t.Fatalf("load exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if files := goldenFiles(t); len(files) != 0 {
+		t.Errorf("golden reads written = %v, want none — a declined offer writes nothing", files)
+	}
+	if !strings.Contains(errOut, "skipped the golden read") {
+		t.Errorf("stderr missing the dismissal:\n%s", errOut)
+	}
+	if !strings.Contains(out, "read-back verified") {
+		t.Errorf("load did not proceed to the writes:\n%s", out)
+	}
+}
+
+func TestLoadWithoutInputRefusesTheFirstWrite(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	loadSession(d, t)    // load may read, but the writes must never run unattended
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	code, _, errOut := runStdin(t, enum, "", "load", "state.json") // EOF: nobody can answer
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (refused)", code)
+	}
+	for _, want := range []string{"golden read", "--i-know-what-im-doing"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut)
+		}
+	}
+	if files := goldenFiles(t); len(files) != 0 {
+		t.Errorf("golden reads written = %v, want none", files)
+	}
+}
+
+func TestLoadSkipFlagSkipsThePromptNoisily(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	loadSession(d, t)
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	code, out, errOut := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if strings.Contains(errOut, "? [Y/n]") {
+		t.Errorf("the skip flag must skip the prompt:\n%s", errOut)
+	}
+	for _, want := range []string{"warning", "--i-know-what-im-doing", "golden read", "NOT saved"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the skip flag must be noisy about it, stderr missing %q:\n%s", want, errOut)
+		}
+	}
+	if files := goldenFiles(t); len(files) != 0 {
+		t.Errorf("golden reads written = %v, want none", files)
+	}
+	if !strings.Contains(out, "read-back verified") {
+		t.Errorf("load did not proceed to the writes:\n%s", out)
+	}
+}
+
+// Every apply is verified by reading the Device back and showing the diff
+// (spec user story 22): a Device that does not report what was written fails
+// loudly with every difference named.
+func TestLoadPrintsReadBackVerificationDiff(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	for i := 0; i < 2; i++ { // save and load's pre-write read pass
+		for _, x := range readPathFixtures(t) {
+			d.Replay(x)
+		}
+	}
+	replaySets(d, t)
+	// The read-back pass reports brightness 2 where the State File says 6.
+	for _, x := range readPathFixtures(t) {
+		if x.Cmd == "GET_LED_EFFECT" {
+			report := bytes.Clone(x.Responses[0])
+			report[17] = 2 // brightness: data offset 9 = report offset 17
+			x.Responses[0] = report
+		}
+		d.Replay(x)
+	}
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	code, out, _ := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (verification failed)\n%s", code, out)
+	}
+	for _, want := range []string{
+		"read-back verification: 1 difference(s) (State File → Device)",
+		"lighting brightness: 6 → 2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// State File validation is external behavior too: a file this build cannot
+// trust is refused with a named reason and nothing is written.
+func TestLoadRejectsUnknownSchemaAndMissingBlocks(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t) // save
+	replayReadPath(d, t) // load probe + read pass for the second case
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	raw, err := os.ReadFile("state.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newer := strings.Replace(string(raw), `"schema": 1`, `"schema": 2`, 1)
+	if err := os.WriteFile("state.json", []byte(newer), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("schema 2: exit = %d, want 1 (stderr: %s)", code, errOut)
+	}
+	if !strings.Contains(errOut, "newer nutctl") {
+		t.Errorf("stderr missing the version explanation:\n%s", errOut)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc["state"].(map[string]any), "fn")
+	noFn, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("state.json", noFn, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut = run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 1 {
+		t.Fatalf("missing block: exit = %d, want 1 (stderr: %s)", code, errOut)
+	}
+	if !strings.Contains(errOut, "state.fn is missing") {
+		t.Errorf("stderr missing the named block:\n%s", errOut)
+	}
+}
+
+// Like `get`, `save` records what the Device reports even when the
+// self-checks fail — and says so loudly.
+func TestSaveWritesEvenWhenSelfChecksFail(t *testing.T) {
+	t.Chdir(t.TempDir())
+	bad := nut87Faulty(t, "/dev/hidraw3",
+		fault{cmd: "GET_KEY", res: 9, off: 8 + 6, data: []byte{0x00}})
+	replayReadPath(bad, t)
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{bad}}
+
+	code, _, errOut := run(t, enum, "save", "state.json")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (checks failed)", code)
+	}
+	if !strings.Contains(errOut, "self-check failed:") {
+		t.Errorf("stderr missing the self-check failure:\n%s", errOut)
+	}
+	if _, err := os.Stat("state.json"); err != nil {
+		t.Errorf("State File not written: %v (the snapshot is exactly what a failing check needs)", err)
+	}
+}
+
+func TestLoadNeedsAFilePath(t *testing.T) {
+	d := nut87(t, "/dev/hidraw3")
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	code, _, errOut := run(t, enum, "load")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (usage error)", code)
+	}
+	if !strings.Contains(errOut, "State File path") {
+		t.Errorf("stderr = %q, want the missing path named", errOut)
+	}
+}
+
+// The wire markers the SET format forces are never verified (they are not
+// state): after a real write the Device reports the Per-Key ledId bytes as
+// the entry index and the Lighting Effect's driverSetting/check code as
+// 0xFF/0xAA 0x55 — exactly what was written. A read-back carrying those must
+// verify clean; only state differences may surface. (This shape was observed
+// on real hardware: firmware 1.20 reports ledIds as indexes after
+// SET_CUSTOM_LED_DATA.)
+func TestLoadVerificationIgnoresWireMarkers(t *testing.T) {
+	t.Chdir(t.TempDir())
+	d := newNut87Fake(t, "/dev/hidraw3")
+	for i := 0; i < 2; i++ { // save and load's pre-write read pass
+		for _, x := range readPathFixtures(t) {
+			d.Replay(x)
+		}
+	}
+	replaySets(d, t)
+	// Read-back as a written Device reports it: ledIds = entry index, and
+	// the Lighting Effect's forced markers visible.
+	for _, x := range readPathFixtures(t) {
+		switch x.Cmd {
+		case "GET_CUSTOM_LED_DATA":
+			r0 := bytes.Clone(x.Responses[0])
+			r0[8+20] = 5 // entry 5's ledId: block byte 20 = chunk 0, report offset 28
+			x.Responses[0] = r0
+			r9 := bytes.Clone(x.Responses[9])
+			r9[8+4] = 127 // entry 127's ledId: block byte 508 = chunk 9, report offset 12
+			x.Responses[9] = r9
+		case "GET_LED_EFFECT":
+			r := bytes.Clone(x.Responses[0])
+			r[8+4] = 0xFF  // driverSetting
+			r[8+14] = 0xAA // check code
+			r[8+15] = 0x55
+			x.Responses[0] = r
+		}
+		d.Replay(x)
+	}
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	if code, _, _ := run(t, enum, "save", "state.json"); code != 0 {
+		t.Fatalf("save exit = %d, want 0", code)
+	}
+	code, out, _ := run(t, enum, "load", "state.json", "--i-know-what-im-doing")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 — wire markers are not state, verification must pass\n%s", code, out)
+	}
+	if !strings.Contains(out, "read-back verified: the Device matches the State File") {
+		t.Errorf("output missing the clean verification:\n%s", out)
+	}
+}
+
+// The file argument and the flags parse in either order, and bad input names
+// the offending argument (the actionable-errors convention of spec user
+// story 29) — never a bare count.
+func TestSaveAndLoadAcceptFlagsAfterTheFile(t *testing.T) {
+	d := newNut87Fake(t, "/dev/hidraw3")
+	replayReadPath(d, t)
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	if code, _, errOut := run(t, enum, "save", path, "--device", "/dev/hidraw3"); code != 0 {
+		t.Fatalf("save exit = %d, want 0 (flags after the file) (stderr: %s)", code, errOut)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("State File not written: %v", err)
+	}
+}
+
+func TestSaveNamesTheOffendingArgument(t *testing.T) {
+	d := newNut87Fake(t, "/dev/hidraw3")
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+	code, _, errOut := run(t, enum, "save", "a.json", "b.json")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (usage error)", code)
+	}
+	if !strings.Contains(errOut, `"b.json"`) {
+		t.Errorf("stderr = %q, want the offending argument named", errOut)
 	}
 }

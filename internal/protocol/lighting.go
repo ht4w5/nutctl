@@ -8,21 +8,28 @@ import "fmt"
 type LightingEffect struct {
 	Mode           uint8   `json:"mode"`
 	RGB            [3]byte `json:"rgb"`
-	DriverSetting  uint8   `json:"driverSetting"`
 	SecondaryRGB   [3]byte `json:"secondaryRgb"`
 	ColorMode      uint8   `json:"colorMode"`
 	Brightness     uint8   `json:"brightness"`
 	Speed          uint8   `json:"speed"`
 	Direction      uint8   `json:"direction"`
 	EffectModeType uint8   `json:"effectModeType"`
-	// CheckCode is the raw byte pair at offsets 14..15.
-	CheckCode [2]byte `json:"checkCode"`
+	// DriverSetting is the raw byte at offset 4. The SET wire format forces
+	// it to 0xFF (docs/protocol.md §4), so it is a wire marker, not Device
+	// state: never marshalled into a State File.
+	DriverSetting uint8 `json:"-"`
+	// CheckCode is the raw byte pair at offsets 14..15. The SET wire format
+	// forces it to 0xAA 0x55 and a write makes the Device report it back
+	// (docs/protocol.md §6.8, observed on firmware 1.20) — a wire marker of
+	// the write path, not Device state: never marshalled into a State File.
+	CheckCode [2]byte `json:"-"`
 	// CheckCodeOK says the check code is a state the protocol recognizes:
 	// written (0xAA 0x55 — the vendor app's SET_LED_EFFECT path puts it
 	// there) or factory/unwritten (0x00 0x00 — the state observed on a
 	// firmware 1.20 Device out of the factory). Any other pair is
 	// corruption/misalignment and fails self-check 3 in internal/device.
-	CheckCodeOK bool `json:"checkCodeOk"`
+	// Derived from CheckCode: never marshalled into a State File.
+	CheckCodeOK bool `json:"-"`
 }
 
 // CheckCode is the magic pair at offsets 14..15 of the Lighting Effect block
@@ -59,10 +66,35 @@ func DecodeLightingEffect(b []byte) (LightingEffect, error) {
 	}, nil
 }
 
+// EncodeLightingEffect encodes a Lighting Effect into its 16-byte
+// GET_LED_EFFECT / SET_LED_EFFECT payload (docs/protocol.md §4). The SET wire
+// format forces two positions quoted from the vendor bundle: byte 4
+// (driverSetting) is 0xFF and the check code at 14..15 is 0xAA 0x55 on every
+// write. Those positions are wire markers of the SET format, not Device
+// state — which is why the State File does not carry them (internal/device).
+func EncodeLightingEffect(e LightingEffect) []byte {
+	out := make([]byte, LEDEffectSize)
+	out[0] = e.Mode
+	copy(out[1:4], e.RGB[:])
+	out[4] = 0xFF // driverSetting is forced to 0xFF on write
+	copy(out[5:8], e.SecondaryRGB[:])
+	out[8] = e.ColorMode
+	out[9] = e.Brightness
+	out[10] = e.Speed
+	out[11] = e.Direction
+	out[12] = e.EffectModeType
+	// byte 13 stays zero; the check code is forced to 0xAA 0x55 on write.
+	out[14], out[15] = CheckCodeByte0, CheckCodeByte1
+	return out
+}
+
 // PerKeyLED is one Per-Key RGB entry (docs/protocol.md §4: ledId, red, green,
 // blue).
 type PerKeyLED struct {
-	LEDID uint8 `json:"ledId"`
+	// LEDID is the raw ledId byte. The SET wire format writes the entry
+	// index there (docs/protocol.md §4: `l[f]=i`), so it is derived on
+	// write: never marshalled into a State File.
+	LEDID uint8 `json:"-"`
 	R     uint8 `json:"r"`
 	G     uint8 `json:"g"`
 	B     uint8 `json:"b"`
@@ -71,6 +103,20 @@ type PerKeyLED struct {
 // PerKeyRGB is a decoded GET_CUSTOM_LED_DATA payload: 128 entries, index =
 // entry id.
 type PerKeyRGB [128]PerKeyLED
+
+// EncodePerKeyRGB encodes the Per-Key RGB table into its 512-byte
+// GET_CUSTOM_LED_DATA / SET_CUSTOM_LED_DATA payload (docs/protocol.md §4:
+// 128 entries × 4 bytes). The SET wire format writes the entry INDEX as the
+// ledId (quoted from the bundle: `l[f]=i`) — the ledId byte is derived on
+// write, never taken from the block, which is why the State File carries
+// colors only (internal/device).
+func EncodePerKeyRGB(rgb PerKeyRGB) []byte {
+	out := make([]byte, PerKeyRGBSize)
+	for i, e := range rgb {
+		copy(out[i*4:], []byte{uint8(i), e.R, e.G, e.B})
+	}
+	return out
+}
 
 // DecodePerKeyRGB decodes a reassembled GET_CUSTOM_LED_DATA payload
 // (docs/protocol.md §4: 128 entries × 4 bytes).

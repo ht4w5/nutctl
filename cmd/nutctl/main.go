@@ -11,6 +11,7 @@ import (
 func main() {
 	os.Exit(cli.Run(os.Args[1:], cli.Deps{
 		Devices: hid.NewEnumerator(),
+		Stdin:   os.Stdin,
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
 	}))

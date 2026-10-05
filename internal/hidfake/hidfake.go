@@ -171,7 +171,11 @@ func (e *Enumerator) Enumerate() ([]hid.Info, error) {
 	return infos, nil
 }
 
-// Open implements hid.Enumerator.
+// Open implements hid.Enumerator. Each Open is a fresh session (a new
+// Reports channel, the device no longer closed) — a test script can drive
+// several CLI invocations against one fake, exactly as each real invocation
+// opens the hidraw node anew. Scripted exchanges carry over between
+// sessions; Sent() keeps accumulating.
 func (e *Enumerator) Open(info hid.Info) (hid.Transport, error) {
 	for _, d := range e.Devices {
 		if d.Info.Path == info.Path {
@@ -180,6 +184,10 @@ func (e *Enumerator) Open(info hid.Info) (hid.Transport, error) {
 			d.opened = true
 			if d.OpenErr != nil {
 				return nil, d.OpenErr
+			}
+			if d.closed {
+				d.closed = false
+				d.reports = make(chan []byte, 256)
 			}
 			return d, nil
 		}

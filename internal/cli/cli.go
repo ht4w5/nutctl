@@ -20,6 +20,7 @@ import (
 // Deps carries the seams the CLI runs against.
 type Deps struct {
 	Devices hid.Enumerator
+	Stdin   io.Reader // the write gate's golden-read prompt reads it
 	Stdout  io.Writer
 	Stderr  io.Writer
 }
@@ -45,9 +46,11 @@ usage:
                                              list every Key Slot with its current Key Action
   nutctl get lighting [--json] [--device P]  print the Lighting Effect and Per-Key RGB
   nutctl get settings [--json] [--device P]  print Settings (Report Rate, key delay, sleep, …)
+  nutctl save <file> [--device P]            write the Device's current state to a State File
+  nutctl load <file> [--device P] [--i-know-what-im-doing]
+                                             apply a State File to the Device (write-gated)
 
-The interactive TUI and the rest of the read/write surface land in later
-milestones; see PLAN.md.
+The interactive TUI lands in a later milestone; see PLAN.md.
 `
 
 // Run executes one CLI invocation and returns the process exit code.
@@ -69,6 +72,10 @@ func Run(args []string, deps Deps) int {
 		return runInfo(args[1:], deps)
 	case "get":
 		return runGet(args[1:], deps)
+	case "save":
+		return runSave(args[1:], deps)
+	case "load":
+		return runLoad(args[1:], deps)
 	case "help", "--help", "-h":
 		fmt.Fprint(deps.Stdout, usageText)
 		return 0
@@ -514,41 +521,25 @@ func (e *checkError) Unwrap() error { return e.err }
 // back as *checkError ALONGSIDE the state, so callers can show the requested
 // view (the diagnosis a failing check needs) and still fail loudly.
 func readFullState(deps Deps, selector string) (deviceState, error) {
-	infos, err := deps.Devices.Enumerate()
-	if err != nil {
-		return deviceState{}, fmt.Errorf("enumerate devices: %w", err)
-	}
-	info, model, err := selectDevice(infos, selector)
-	if err != nil {
-		return deviceState{}, err
-	}
-	dev, di, err := openProbe(deps, info)
+	info, model, dev, di, err := openSelected(deps, selector)
 	if err != nil {
 		return deviceState{}, err
 	}
 	defer dev.Close()
+	return checkedRead(info, model, dev, di)
+}
 
-	ctx := context.Background()
-	st := deviceState{model: model}
-	// The block names come from the protocol layer's errors (they already say
-	// "GET_KEY: …" and friends); here only the probe path is added — the
-	// established openProbe pattern, never a doubled prefix.
-	if st.base, err = dev.Keymap(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", info.Path, err)
+// checkedRead makes ONE full read pass and runs device.RunChecks ONCE over it
+// (ADR-0003) — the shared verification step of every get/save/load. A failed
+// self-check comes back as *checkError ALONGSIDE the state: the checks gate
+// WRITES, not reads, and the state is exactly what a failing check needs for
+// diagnosis.
+func checkedRead(info hid.Info, model device.Model, dev *protocol.Device, di protocol.DeviceInfo) (deviceState, error) {
+	st, err := readStatePass(dev, info.Path)
+	if err != nil {
+		return deviceState{}, err
 	}
-	if st.fn, err = dev.FnKeymap(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", info.Path, err)
-	}
-	if st.lighting, err = dev.LightingEffect(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", info.Path, err)
-	}
-	if st.perKey, err = dev.PerKeyRGB(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", info.Path, err)
-	}
-	if st.settings, err = dev.Settings(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", info.Path, err)
-	}
-
+	st.model = model
 	if err := device.RunChecks(model, device.CheckInput{
 		USB:      usbIdentity(info),
 		Reported: firmwareIdentity(di),
@@ -556,10 +547,53 @@ func readFullState(deps Deps, selector string) (deviceState, error) {
 		Fn:       st.fn,
 		Lighting: st.lighting,
 	}); err != nil {
-		// The state goes back WITH the failure: the checks gate writes
-		// (ADR-0003), not reads, and the state display is exactly what a
-		// failing check needs for diagnosis.
 		return st, &checkError{err}
+	}
+	return st, nil
+}
+
+// openSelected identifies the Model, opens the selected Device and verifies
+// it against its own firmware report (openProbe). The caller closes the
+// Device. It is the one way save/load/get reach the wire.
+func openSelected(deps Deps, selector string) (hid.Info, device.Model, *protocol.Device, protocol.DeviceInfo, error) {
+	infos, err := deps.Devices.Enumerate()
+	if err != nil {
+		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, fmt.Errorf("enumerate devices: %w", err)
+	}
+	info, model, err := selectDevice(infos, selector)
+	if err != nil {
+		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, err
+	}
+	dev, di, err := openProbe(deps, info)
+	if err != nil {
+		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, err
+	}
+	return info, model, dev, di, nil
+}
+
+// readStatePass makes ONE full read pass over an open Device: GET_KEY,
+// GET_FN_KEY, GET_LED_EFFECT, GET_CUSTOM_LED_DATA, GET_GAME_MODE.
+func readStatePass(dev *protocol.Device, path string) (deviceState, error) {
+	ctx := context.Background()
+	st := deviceState{}
+	var err error
+	// The block names come from the protocol layer's errors (they already say
+	// "GET_KEY: …" and friends); here only the probe path is added — the
+	// established openProbe pattern, never a doubled prefix.
+	if st.base, err = dev.Keymap(ctx); err != nil {
+		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
+	}
+	if st.fn, err = dev.FnKeymap(ctx); err != nil {
+		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
+	}
+	if st.lighting, err = dev.LightingEffect(ctx); err != nil {
+		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
+	}
+	if st.perKey, err = dev.PerKeyRGB(ctx); err != nil {
+		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
+	}
+	if st.settings, err = dev.Settings(ctx); err != nil {
+		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
 	}
 	return st, nil
 }

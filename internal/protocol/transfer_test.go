@@ -357,3 +357,263 @@ func TestKeymapMultiChunkReassemblyOverFakeDevice(t *testing.T) {
 	}
 	assertSentMatch(t, fake, x)
 }
+
+// --- write path (ticket 03) ---
+//
+// SET_* transfers are batched writes: the whole block goes out as one
+// chunked transfer (one request report per chunk, one ack per chunk), framed
+// exactly like the read path. The expected request reports below are spelled
+// out from the frame format of docs/protocol.md §2 (magic, cmd, len, addr u16
+// LE, last-packet flag at byte 6); the payload bytes are pinned to literals
+// by the codec tests above. The hardware pass records the real exchanges as
+// testdata/captures/set_*/ fixtures.
+
+// ack is a minimal SET response report: the cmd echo is all the transfer
+// engine matches on (checkAddr is off for writes). The real Device's ack
+// shape is recorded in the set_* fixtures.
+func ack(cmd byte, addr uint16, length byte) []byte {
+	r := make([]byte, 64)
+	r[0], r[1], r[2] = ResponseMagic, cmd, length
+	r[3], r[4] = byte(addr), byte(addr>>8)
+	return r
+}
+
+// wantChunk builds one expected request report from the documented frame
+// format — independent of Request.Marshal on purpose.
+func wantChunk(cmd byte, addr uint16, length byte, last bool, payload []byte) []byte {
+	r := make([]byte, 64)
+	r[0], r[1], r[2] = RequestMagic, cmd, length
+	r[3], r[4] = byte(addr), byte(addr>>8)
+	if last {
+		r[6] = 1
+	}
+	copy(r[8:], payload)
+	return r
+}
+
+// SET_LED_EFFECT is one 16-byte block in one chunk: a single request report
+// carrying the whole payload.
+func TestSetLightingEffectOverFakeDevice(t *testing.T) {
+	effect := LightingEffect{
+		Mode: 5, RGB: [3]byte{1, 2, 3}, SecondaryRGB: [3]byte{4, 5, 6},
+		ColorMode: 7, Brightness: 4, Speed: 2, Direction: 1, EffectModeType: 3,
+	}
+	want := wantChunk(CmdSetLEDEffect, 0, LEDEffectSize, true,
+		[]byte{5, 1, 2, 3, 0xFF, 4, 5, 6, 7, 4, 2, 1, 3, 0, 0xAA, 0x55})
+
+	fake := hidfake.New(hid.Info{Path: "/dev/hidraw3", ReportLength: 64})
+	fake.Script(nil, ack(CmdSetLEDEffect, 0, LEDEffectSize))
+	dev := newDevice(t, fake)
+
+	if err := dev.SetLightingEffect(context.Background(), effect); err != nil {
+		t.Fatalf("SetLightingEffect: %v", err)
+	}
+	sent := fake.Sent()
+	if len(sent) != 1 {
+		t.Fatalf("sent %d request reports, want 1 chunk", len(sent))
+	}
+	if !bytes.Equal(sent[0], want) {
+		t.Errorf("request:\n got  %X\n want %X", sent[0], want)
+	}
+}
+
+// SET_GAME_MODE is one 56-byte block in one chunk on 64-byte reports.
+func TestSetSettingsOverFakeDevice(t *testing.T) {
+	s := Settings{GameMode: 1, FnSwitch: 1, SleepTime: 5, KeyDelay: 3,
+		ReportRate: ReportRate8K, TopDeadZone: 0.35, NKROSwitch: 1,
+		WirelessReportRate: 1000, PowerMode: 3}
+	want := wantChunk(CmdSetGameMode, 0, SettingsSize, true, EncodeSettings(s))
+
+	fake := hidfake.New(hid.Info{Path: "/dev/hidraw3", ReportLength: 64})
+	fake.Script(nil, ack(CmdSetGameMode, 0, SettingsSize))
+	dev := newDevice(t, fake)
+
+	if err := dev.SetSettings(context.Background(), s); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	sent := fake.Sent()
+	if len(sent) != 1 {
+		t.Fatalf("sent %d request reports, want 1 chunk", len(sent))
+	}
+	if !bytes.Equal(sent[0], want) {
+		t.Errorf("request:\n got  %X\n want %X", sent[0], want)
+	}
+}
+
+// SET_KEY is one batched transfer: the whole 512-byte block chunked at the
+// report payload capacity (56 bytes on 64-byte reports → 10 chunks: nine
+// full and a tail of 8), each chunk answered by one ack.
+func TestSetKeymapBatchedTransferOverFakeDevice(t *testing.T) {
+	var km Keymap
+	km[0] = KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x29, 0}}
+	km[127] = KeyAction{Type: ActionDefault, Params: [3]byte{0, 0xAA, 0x55}}
+	payload := EncodeKeymap(km)
+
+	fake := hidfake.New(hid.Info{Path: "/dev/hidraw3", ReportLength: 64})
+	for i := 0; i < 10; i++ {
+		fake.Script(nil, ack(CmdSetKey, uint16(i*56), 56))
+	}
+	dev := newDevice(t, fake)
+
+	if err := dev.SetKeymap(context.Background(), km); err != nil {
+		t.Fatalf("SetKeymap: %v", err)
+	}
+	sent := fake.Sent()
+	if len(sent) != 10 {
+		t.Fatalf("sent %d request reports, want 10 chunks", len(sent))
+	}
+	for i := 0; i < 10; i++ {
+		length := 56
+		if i == 9 {
+			length = 8
+		}
+		chunk := payload[i*56 : i*56+length]
+		want := wantChunk(CmdSetKey, uint16(i*56), byte(length), i == 9, chunk)
+		if !bytes.Equal(sent[i], want) {
+			t.Errorf("chunk %d:\n got  %X\n want %X", i, sent[i], want)
+		}
+	}
+}
+
+// A dropped SET ack is retried like a dropped read response: the same chunk
+// goes out again, then the transfer continues.
+func TestSetDroppedAckIsRetried(t *testing.T) {
+	effect := LightingEffect{Mode: 5}
+	fake := hidfake.New(hid.Info{Path: "/dev/hidraw3", ReportLength: 64})
+	fake.ScriptDrop(nil) // first ack is lost
+	fake.Script(nil, ack(CmdSetLEDEffect, 0, LEDEffectSize))
+	dev := newDevice(t, fake)
+
+	if err := dev.SetLightingEffect(context.Background(), effect); err != nil {
+		t.Fatalf("SetLightingEffect: %v", err)
+	}
+	sent := fake.Sent()
+	if len(sent) != 2 {
+		t.Fatalf("sent %d request reports, want 2 (retried chunk)", len(sent))
+	}
+	if !bytes.Equal(sent[0], sent[1]) {
+		t.Errorf("retry sent a different chunk:\n %X\n %X", sent[0], sent[1])
+	}
+}
+
+// The vendor transfer engine gives each command its own timeout
+// (docs/protocol.md §2, quoted from the bundle): 500 ms default, 1000 ms for
+// SET_KEY, 2000 ms for SET_CUSTOM_LED_DATA and on frameVersion-1 firmware.
+// A dropped-ack failure names the timeout it used.
+func TestSetKeymapTimeoutIsTheDocumentedOne(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits out real transfer timeouts")
+	}
+	var km Keymap
+	fake := hidfake.New(hid.Info{Path: "/dev/hidraw3", ReportLength: 64})
+	for i := 0; i <= DefaultMaxRetries; i++ {
+		fake.ScriptDrop(nil)
+	}
+	// Default Options: the documented per-command timeouts must apply.
+	dev, err := Open(fake, Options{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer dev.Close()
+
+	err = dev.SetKeymap(context.Background(), km)
+	if err == nil {
+		t.Fatal("SetKeymap succeeded against dropped acks, want timeout error")
+	}
+	if !strings.Contains(err.Error(), "timeout 1s per attempt") {
+		t.Errorf("error = %v, want the documented 1s SET_KEY timeout named", err)
+	}
+}
+
+// The recorded set_* fixtures are the real write exchanges (docs/capture.md
+// Method A, 2026-10-05: the Device's own state written back, acked, and read
+// back byte-for-byte). The request reports our write path produces must be
+// the ones the Device actually accepted — byte for byte — and the payloads
+// must be exactly what encode(decode(committed read fixtures)) yields: the
+// write path is the read path's inverse, locked against two recordings of
+// the same Device state.
+func TestSetKeymapOverRecordedFixture(t *testing.T) {
+	assertSetMatchesFixture(t, "set_key", "get_key", func(dev *Device, payload []byte) error {
+		km, err := DecodeKeymap(payload)
+		if err != nil {
+			return err
+		}
+		return dev.SetKeymap(context.Background(), km)
+	})
+}
+
+func TestSetFnKeymapOverRecordedFixture(t *testing.T) {
+	assertSetMatchesFixture(t, "set_fn_key", "get_fn_key", func(dev *Device, payload []byte) error {
+		km, err := DecodeKeymap(payload)
+		if err != nil {
+			return err
+		}
+		return dev.SetFnKeymap(context.Background(), km)
+	})
+}
+
+func TestSetLightingEffectOverRecordedFixture(t *testing.T) {
+	assertSetMatchesFixture(t, "set_led_effect", "get_led_effect", func(dev *Device, payload []byte) error {
+		e, err := DecodeLightingEffect(payload)
+		if err != nil {
+			return err
+		}
+		return dev.SetLightingEffect(context.Background(), e)
+	})
+}
+
+func TestSetPerKeyRGBOverRecordedFixture(t *testing.T) {
+	assertSetMatchesFixture(t, "set_custom_led_data", "get_custom_led_data", func(dev *Device, payload []byte) error {
+		rgb, err := DecodePerKeyRGB(payload)
+		if err != nil {
+			return err
+		}
+		return dev.SetPerKeyRGB(context.Background(), rgb)
+	})
+}
+
+func TestSetSettingsOverRecordedFixture(t *testing.T) {
+	assertSetMatchesFixture(t, "set_game_mode", "get_game_mode", func(dev *Device, payload []byte) error {
+		s, err := DecodeSettings(payload)
+		if err != nil {
+			return err
+		}
+		return dev.SetSettings(context.Background(), s)
+	})
+}
+
+// assertSetMatchesFixture drives one SET from the committed read fixture's
+// decoded state and demands the recorded write exchange, byte for byte.
+func assertSetMatchesFixture(t *testing.T, setDir, getDir string, set func(*Device, []byte) error) {
+	t.Helper()
+	x := loadFixture(t, setDir, "nut87")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	r := loadFixture(t, getDir, "nut87")
+	payload := reassemble(r.Responses, reassembledSize(getDir))
+	if err := set(dev, payload); err != nil {
+		t.Fatalf("SET %s: %v", setDir, err)
+	}
+	sent := fake.Sent()
+	if len(sent) != len(x.Requests) {
+		t.Fatalf("sent %d request reports, want %d (the recorded exchange)", len(sent), len(x.Requests))
+	}
+	for i := range sent {
+		if !bytes.Equal(sent[i], x.Requests[i]) {
+			t.Errorf("request report %d:\n got  %X\n want %X", i, sent[i], x.Requests[i])
+		}
+	}
+}
+
+// reassembledSize is the block size behind a fixture directory name.
+func reassembledSize(dir string) int {
+	switch dir {
+	case "get_key", "get_fn_key", "get_custom_led_data":
+		return 512
+	case "get_led_effect":
+		return 16
+	default:
+		return 56
+	}
+}

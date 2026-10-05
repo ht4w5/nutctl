@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -121,5 +122,108 @@ func TestKeyActionTypeLabels(t *testing.T) {
 		if want := `"` + tt.want + `"`; string(b) != want {
 			t.Errorf("Marshal(KeyActionType(%d)) = %s, want %s", uint8(tt.typ), b, want)
 		}
+	}
+}
+
+// The write path (ticket 03): a Keymap encodes back to the exact wire bytes
+// the Device reported — the recorded GET_KEY block is the independent source
+// of truth, and raw bytes are the wire truth of a Key Slot (decode preserves
+// them, encode reproduces them, whatever page type they carry).
+func TestEncodeKeymapReproducesRecordedBlock(t *testing.T) {
+	x := loadFixture(t, "get_key", "nut87")
+	payload := reassemble(x.Responses, KeymapSize)
+	keymap, err := DecodeKeymap(payload)
+	if err != nil {
+		t.Fatalf("DecodeKeymap: %v", err)
+	}
+	if got := EncodeKeymap(keymap); !bytes.Equal(got, payload) {
+		for i := 0; i < KeymapSize; i += 4 {
+			if !bytes.Equal(got[i:i+4], payload[i:i+4]) {
+				t.Errorf("slot %d: encoded %X, want %X", i/4, got[i:i+4], payload[i:i+4])
+			}
+		}
+	}
+}
+
+// A Key Action constructed in memory (no Raw) encodes from its Type and
+// Params — the page-type table of docs/protocol.md §4. FUNC_V2 and the
+// explicit UNKNOWN marker carry their page byte in Raw[0] and encode from
+// there.
+func TestEncodeKeymapFromTypeAndParams(t *testing.T) {
+	var km Keymap
+	km[0] = KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x29, 0}}
+	km[1] = KeyAction{Type: ActionConsumer, Params: [3]byte{0xE9, 0, 0}}
+	km[2] = KeyAction{Type: ActionFunc, Params: [3]byte{1, 2, 3}}
+	km[3] = KeyAction{Type: ActionFuncV2, Params: [3]byte{4, 5, 6}, Raw: [4]byte{0x82, 4, 5, 6}}
+	km[4] = KeyAction{Type: ActionUnknown, Params: [3]byte{7, 8, 9}, Raw: [4]byte{42, 7, 8, 9}}
+
+	got := EncodeKeymap(km)
+	for slot, want := range [][]byte{
+		{2, 0, 0x29, 0},
+		{3, 0xE9, 0, 0},
+		{13, 1, 2, 3},
+		{0x82, 4, 5, 6},
+		{42, 7, 8, 9},
+	} {
+		if !bytes.Equal(got[slot*4:slot*4+4], want) {
+			t.Errorf("slot %d: encoded %X, want %X", slot, got[slot*4:slot*4+4], want)
+		}
+	}
+}
+
+// State File JSON of a Key Action (ticket 03): a readable row with the page
+// type label and hex byte strings, carrying the raw wire bytes — the wire
+// truth of a Key Slot. Raw is required and authoritative; type and params are
+// optional readability fields, validated against it when present. The format
+// is what internal/device's State File marshals.
+func TestKeyActionStateJSON(t *testing.T) {
+	a := KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x29, 0}, Raw: [4]byte{2, 0, 0x29, 0}}
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if want := `{"type":"KEYBOARD","params":"00 29 00","raw":"02 00 29 00"}`; string(b) != want {
+		t.Errorf("Marshal = %s, want %s", b, want)
+	}
+
+	for _, doc := range []string{
+		`{"type":"KEYBOARD","params":"00 29 00","raw":"02 00 29 00"}`, // all three, consistent
+		`{"raw":"02 00 29 00"}`, // raw only: type/params derived
+	} {
+		var got KeyAction
+		if err := json.Unmarshal([]byte(doc), &got); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", doc, err)
+		}
+		if got != a {
+			t.Errorf("Unmarshal(%s) = %+v, want %+v", doc, got, a)
+		}
+	}
+
+	for _, bad := range []string{
+		`{"type":"KEYBOARD","params":"00 39 00","raw":"02 00 29 00"}`, // params disagree with raw
+		`{"type":"MOUSE","raw":"02 00 29 00"}`,                        // type disagrees with raw
+		`{"type":"WHAT","raw":"02 00 29 00"}`,                         // unknown page-type label
+		`{"raw":"02 00 29"}`,                                          // raw must be 4 bytes
+		`{"type":"KEYBOARD","params":"00 29 00"}`,                     // raw is the truth and required
+		`{}`,
+	} {
+		var got KeyAction
+		if err := json.Unmarshal([]byte(bad), &got); err == nil {
+			t.Errorf("Unmarshal(%s) accepted a corrupt Key Action row, want error", bad)
+		}
+	}
+}
+
+// An unknown page type round-trips through JSON with its raw page byte —
+// the explicit UNKNOWN marker is never lost to a State File.
+func TestKeyActionStateJSONUnknownPageType(t *testing.T) {
+	a := KeyAction{Type: ActionUnknown, Params: [3]byte{7, 8, 9}, Raw: [4]byte{42, 7, 8, 9}}
+	b, _ := json.Marshal(a)
+	var got KeyAction
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal(%s): %v", b, err)
+	}
+	if got != a {
+		t.Errorf("round trip = %+v, want %+v", got, a)
 	}
 }

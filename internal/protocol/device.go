@@ -10,20 +10,26 @@ import (
 	"github.com/ht4w5/nutctl/internal/hid"
 )
 
-// Transfer defaults (docs/protocol.md §2): 500 ms per attempt, 3 retries;
-// firmware with frameVersion 1 answers slower and gets 2000 ms. SET_KEY gets
-// 1000 ms — wired in when the write path lands.
+// Transfer defaults (docs/protocol.md §2): 500 ms per attempt, 3 retries.
+// Every command carries its own per-attempt timeout, quoted from the vendor
+// bundle's transfer engine: 500 ms default, 1000 ms for SET_KEY, 2000 ms for
+// SET_CUSTOM_LED_DATA and for every transfer on frameVersion-1 firmware.
 const (
-	DefaultTimeout       = 500 * time.Millisecond
-	FrameVersion1Timeout = 2 * time.Second
-	DefaultMaxRetries    = 3
+	DefaultTimeout          = 500 * time.Millisecond
+	SetKeyTimeout           = 1000 * time.Millisecond
+	SetCustomLEDDataTimeout = 2 * time.Second
+	FrameVersion1Timeout    = 2 * time.Second
+	DefaultMaxRetries       = 3
 )
 
 // Options tunes the transfer engine. The zero value uses the protocol
 // defaults.
 type Options struct {
-	Timeout    time.Duration // per attempt
-	MaxRetries int           // total retries after the first attempt
+	// Timeout overrides the per-attempt timeout of every transfer. Zero uses
+	// the documented per-command timeouts above.
+	Timeout time.Duration
+	// MaxRetries is the total retries after the first attempt.
+	MaxRetries int
 }
 
 // Device speaks the protocol to one keyboard over a Transport. One goroutine
@@ -44,9 +50,6 @@ type Device struct {
 func Open(t hid.Transport, opts Options) (*Device, error) {
 	if t == nil {
 		return nil, errors.New("protocol: nil transport")
-	}
-	if opts.Timeout <= 0 {
-		opts.Timeout = DefaultTimeout
 	}
 	if opts.MaxRetries <= 0 {
 		opts.MaxRetries = DefaultMaxRetries
@@ -126,6 +129,8 @@ type transferSpec struct {
 	checkAddr          bool
 	skipResponse       bool
 	needLastPacketFlag bool
+
+	timeout time.Duration // documented per-attempt timeout of this command
 }
 
 // do runs one transfer and returns the raw response reports (one per chunk).
@@ -146,9 +151,15 @@ func (d *Device) runTransfer(ctx context.Context, tr transferSpec) ([][]byte, er
 		return nil, fmt.Errorf("protocol: content size must be positive, got %d", tr.contentSize)
 	}
 
-	timeout := d.opts.Timeout
-	if d.frameVersion == 1 {
+	timeout := tr.timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	if d.frameVersion == 1 && timeout < FrameVersion1Timeout {
 		timeout = FrameVersion1Timeout
+	}
+	if d.opts.Timeout > 0 {
+		timeout = d.opts.Timeout
 	}
 
 	var responses [][]byte
@@ -345,6 +356,61 @@ func (d *Device) PerKeyRGB(ctx context.Context) (PerKeyRGB, error) {
 		return PerKeyRGB{}, fmt.Errorf("GET_CUSTOM_LED_DATA: %w", err)
 	}
 	return rgb, nil
+}
+
+// writeSpec is a batched write of one complete block (docs/protocol.md §4):
+// the block goes out as one chunked transfer, each chunk answered by one ack.
+func writeSpec(cmd byte, size int, data []byte, timeout time.Duration) transferSpec {
+	return transferSpec{
+		cmd:                cmd,
+		contentSize:        size,
+		data:               data,
+		needLastPacketFlag: true,
+		timeout:            timeout,
+	}
+}
+
+// SetKeymap writes the Base Layer Key Action table (SET_KEY): one batched
+// 512-byte transfer, 1000 ms per chunk as the vendor engine does.
+func (d *Device) SetKeymap(ctx context.Context, km Keymap) error {
+	if err := d.runTransferErr(ctx, "SET_KEY", writeSpec(CmdSetKey, KeymapSize, EncodeKeymap(km), SetKeyTimeout)); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetFnKeymap writes the Fn Layer Key Action table (SET_FN_KEY): one batched
+// 512-byte transfer.
+func (d *Device) SetFnKeymap(ctx context.Context, km Keymap) error {
+	return d.runTransferErr(ctx, "SET_FN_KEY", writeSpec(CmdSetFnKey, KeymapSize, EncodeKeymap(km), DefaultTimeout))
+}
+
+// SetLightingEffect writes the Lighting Effect block (SET_LED_EFFECT): one
+// 16-byte transfer. The check code the block carries is the SET wire
+// format's (docs/protocol.md §4), not the state read back.
+func (d *Device) SetLightingEffect(ctx context.Context, e LightingEffect) error {
+	return d.runTransferErr(ctx, "SET_LED_EFFECT", writeSpec(CmdSetLEDEffect, LEDEffectSize, EncodeLightingEffect(e), DefaultTimeout))
+}
+
+// SetPerKeyRGB writes the Per-Key RGB table (SET_CUSTOM_LED_DATA): one
+// batched 512-byte transfer, 2000 ms per chunk as the vendor engine does.
+func (d *Device) SetPerKeyRGB(ctx context.Context, rgb PerKeyRGB) error {
+	return d.runTransferErr(ctx, "SET_CUSTOM_LED_DATA", writeSpec(CmdSetCustomLEDData, PerKeyRGBSize, EncodePerKeyRGB(rgb), SetCustomLEDDataTimeout))
+}
+
+// SetSettings writes the Settings block (SET_GAME_MODE): one 56-byte
+// transfer.
+func (d *Device) SetSettings(ctx context.Context, s Settings) error {
+	return d.runTransferErr(ctx, "SET_GAME_MODE", writeSpec(CmdSetGameMode, SettingsSize, EncodeSettings(s), DefaultTimeout))
+}
+
+// runTransferErr runs one transfer and names the command in the failure the
+// way the typed reads do ("SET_KEY: …").
+func (d *Device) runTransferErr(ctx context.Context, name string, tr transferSpec) error {
+	if _, err := d.runTransfer(ctx, tr); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
 }
 
 // reassemble concatenates the data of each response report and truncates to
