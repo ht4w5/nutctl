@@ -15,6 +15,7 @@ import (
 	"github.com/ht4w5/nutctl/internal/device"
 	"github.com/ht4w5/nutctl/internal/hid"
 	"github.com/ht4w5/nutctl/internal/protocol"
+	"github.com/ht4w5/nutctl/internal/tui"
 )
 
 // Deps carries the seams the CLI runs against.
@@ -25,21 +26,10 @@ type Deps struct {
 	Stderr  io.Writer
 }
 
-// acceptedUsagePages are the HID collection usage pages the vendor protocol
-// speaks on (docs/protocol.md §1). Interfaces without one of these cannot be
-// candidates.
-var acceptedUsagePages = map[uint16]bool{
-	0xFF68: true,
-	0xFF80: true,
-	0xFF60: true,
-	0xFF00: true,
-	0xFF01: true,
-	0xFF1B: true,
-}
-
 const usageText = `nutctl — configure the WEIKAV NUT87 keyboard
 
 usage:
+  nutctl                                    open the TUI (Device · Keys · Lighting · Settings)
   nutctl list [--json]                       enumerate connected Devices and identify their Model
   nutctl info [--json] [--device P]          print Model, firmware version, Report Rate and Device facts
   nutctl get keymap [--layer base|fn] [--json] [--device P]
@@ -50,7 +40,8 @@ usage:
   nutctl load <file> [--device P] [--i-know-what-im-doing]
                                              apply a State File to the Device (write-gated)
 
-The interactive TUI lands in a later milestone; see PLAN.md.
+Bare nutctl opens the TUI (ADR-0004); the commands above are its scriptable
+side (see PLAN.md).
 `
 
 // Run executes one CLI invocation and returns the process exit code.
@@ -62,8 +53,14 @@ func Run(args []string, deps Deps) int {
 		deps.Stderr = io.Discard
 	}
 	if len(args) == 0 {
-		fmt.Fprint(deps.Stdout, usageText)
-		return 0
+		// Bare nutctl opens the TUI (spec user story 2): interactive
+		// configuration is the default experience (ADR-0004).
+		return tui.Run(tui.Deps{
+			Devices: deps.Devices,
+			Stdin:   deps.Stdin,
+			Stdout:  deps.Stdout,
+			Stderr:  deps.Stderr,
+		})
 	}
 	switch args[0] {
 	case "list":
@@ -125,7 +122,7 @@ func runList(args []string, deps Deps) int {
 
 	entries := []listEntry{}
 	for _, info := range infos {
-		if !acceptedUsagePages[info.UsagePage] {
+		if !device.IsCandidate(info) {
 			continue
 		}
 		entries = append(entries, probe(deps, info))
@@ -175,35 +172,9 @@ func humanStatus(e listEntry) string {
 	}
 }
 
-// usbIdentity is the Device Identity as seen at enumeration (CONTEXT.md): the
-// USB ids and the product-name string the Model is matched on. The USB product
-// string is what the vendor bundle calls `productName` and matches config names
-// with; GET_DEVICE_INFO carries no name fields.
-func usbIdentity(info hid.Info) device.Identity {
-	return device.Identity{
-		VendorID:    info.VendorID,
-		ProductID:   info.ProductID,
-		ProductName: info.ProductName,
-	}
-}
-
-// firmwareIdentity is the identity the firmware reports in GET_DEVICE_INFO:
-// the vendor/product ids and the u16 manufacturer/product fields.
-// GET_DEVICE_INFO carries no name strings (docs/protocol.md §4), so the
-// product-name half of the Device Identity can only be matched from USB
-// enumeration (see usbIdentity).
-func firmwareIdentity(di protocol.DeviceInfo) device.Identity {
-	return device.Identity{
-		VendorID:     di.VID,
-		ProductID:    di.PID,
-		Manufacturer: di.Manufacturer,
-		Product:      di.Product,
-	}
-}
-
 // probe identifies the Model from the Device Identity and, for supported
-// Models, proves the protocol speaks by reading GET_DEVICE_INFO. It never
-// opens a Device it does not support.
+// Models, proves the protocol speaks by reading GET_DEVICE_INFO (Session).
+// It never opens a Device it does not support.
 func probe(deps Deps, info hid.Info) listEntry {
 	e := listEntry{
 		Path:         info.Path,
@@ -213,7 +184,7 @@ func probe(deps Deps, info hid.Info) listEntry {
 		Manufacturer: info.Manufacturer,
 	}
 
-	m, err := device.Identify(usbIdentity(info))
+	m, err := device.Identify(device.IdentityFromUSB(info))
 	if err != nil {
 		e.Status = statusUnknown
 		var wrong *device.WrongModelError
@@ -231,13 +202,14 @@ func probe(deps Deps, info hid.Info) listEntry {
 		return e
 	}
 
-	di, err := readInfo(deps, info)
+	s, err := device.OpenInfo(deps.Devices, info, m)
 	if err != nil {
 		e.Status = statusProbeFail
 		e.Detail = err.Error()
 		return e
 	}
-	e.Firmware = di.Version
+	defer s.Close()
+	e.Firmware = s.DeviceInfo.Version
 	e.Status = statusOK
 	return e
 }
@@ -254,28 +226,18 @@ func runInfo(args []string, deps Deps) int {
 		return usageError(deps, fmt.Errorf("unexpected argument %q", fs.Arg(0)))
 	}
 
-	infos, err := deps.Devices.Enumerate()
-	if err != nil {
-		return fail(deps, fmt.Errorf("enumerate devices: %w", err))
-	}
-
-	info, m, err := selectDevice(infos, *selector)
+	s, err := device.Open(deps.Devices, *selector)
 	if err != nil {
 		return fail(deps, err)
 	}
+	defer s.Close()
 
-	dev, di, err := openProbe(deps, info)
+	settings, err := s.Dev.Settings(context.Background())
 	if err != nil {
-		return fail(deps, err)
-	}
-	defer dev.Close()
-
-	settings, err := dev.Settings(context.Background())
-	if err != nil {
-		return fail(deps, fmt.Errorf("probe %s: %w", info.Path, err))
+		return fail(deps, fmt.Errorf("probe %s: %w", s.Info.Path, err))
 	}
 
-	view := infoView{info: info, model: m, id: usbIdentity(info), di: di, settings: settings}
+	view := infoView{info: s.Info, model: s.Model, id: device.IdentityFromUSB(s.Info), di: s.DeviceInfo, settings: settings}
 	if *jsonOut {
 		return printInfoJSON(deps, view)
 	}
@@ -283,108 +245,8 @@ func runInfo(args []string, deps Deps) int {
 	return 0
 }
 
-// selectDevice picks the Device: an explicit --device path, or the single
-// supported candidate. Ambiguity and refusals are errors — never a guess.
-func selectDevice(infos []hid.Info, selector string) (hid.Info, device.Model, error) {
-	type candidate struct {
-		info  hid.Info
-		model device.Model
-	}
-	var supported []candidate
-	var rejected error // a concrete refusal (wrong Model / unknown device), if any
-	for _, info := range infos {
-		if !acceptedUsagePages[info.UsagePage] {
-			continue
-		}
-		if selector != "" && info.Path != selector {
-			continue
-		}
-		id := usbIdentity(info)
-		m, err := device.Identify(id)
-		if err != nil {
-			if selector != "" {
-				return hid.Info{}, device.Model{}, err
-			}
-			// Prefer the specific wrong-Model refusal over a generic "none found".
-			if rejected == nil {
-				rejected = err
-			}
-			continue
-		}
-		if err := device.CheckSupported(m); err != nil {
-			if selector != "" {
-				return hid.Info{}, device.Model{}, err
-			}
-			var wrong *device.WrongModelError
-			if errors.As(err, &wrong) && rejected == nil {
-				rejected = err
-			}
-			continue
-		}
-		supported = append(supported, candidate{info: info, model: m})
-	}
-
-	if selector != "" {
-		if len(supported) == 0 {
-			return hid.Info{}, device.Model{}, fmt.Errorf("no device at %s", selector)
-		}
-		return supported[0].info, supported[0].model, nil
-	}
-	switch len(supported) {
-	case 0:
-		if rejected != nil {
-			return hid.Info{}, device.Model{}, rejected
-		}
-		return hid.Info{}, device.Model{}, errors.New("no supported device found (looking for a NUT87)\n" + udevHint)
-	case 1:
-		return supported[0].info, supported[0].model, nil
-	default:
-		paths := ""
-		for i, c := range supported {
-			if i > 0 {
-				paths += ", "
-			}
-			paths += c.info.Path
-		}
-		return hid.Info{}, device.Model{}, fmt.Errorf(
-			"multiple supported devices connected (%s); select one with --device PATH", paths)
-	}
-}
-
-// openProbe opens a supported Device, reads its identity block and verifies
-// it against the enumerated identity (the self-check of docs/capture.md
-// Method A: the firmware must report the USB ids we enumerated).
-func openProbe(deps Deps, info hid.Info) (*protocol.Device, protocol.DeviceInfo, error) {
-	tr, err := deps.Devices.Open(info)
-	if err != nil {
-		return nil, protocol.DeviceInfo{}, fmt.Errorf("open %s: %w", info.Path, err)
-	}
-	dev, err := protocol.Open(tr, protocol.Options{})
-	if err != nil {
-		tr.Close()
-		return nil, protocol.DeviceInfo{}, err
-	}
-	di, err := dev.Info(context.Background())
-	if err != nil {
-		dev.Close()
-		return nil, protocol.DeviceInfo{}, fmt.Errorf("probe %s: %w", info.Path, err)
-	}
-	if err := device.Verify(usbIdentity(info), firmwareIdentity(di)); err != nil {
-		dev.Close()
-		return nil, protocol.DeviceInfo{}, err
-	}
-	return dev, di, nil
-}
-
-// readInfo opens a supported Device and reads its identity block, for `list`.
-func readInfo(deps Deps, info hid.Info) (protocol.DeviceInfo, error) {
-	dev, di, err := openProbe(deps, info)
-	if err != nil {
-		return protocol.DeviceInfo{}, err
-	}
-	dev.Close()
-	return di, nil
-}
+// selectDevice, openProbe and readInfo are spelled once in the device layer
+// (device.Select, device.OpenInfo, device.Session) and shared with the TUI.
 
 // infoView is everything `nutctl info` reports about one Device.
 type infoView struct {
@@ -449,7 +311,7 @@ func printInfoJSON(deps Deps, v infoView) int {
 			FrameVersion:    v.di.FrameVersion,
 			LightingVersion: v.di.LightingVersion,
 			Status:          v.di.FirmwareStatus,
-			StatusText:      firmwareStatusText(v.di.FirmwareStatus),
+			StatusText:      protocol.FirmwareStatusText(v.di.FirmwareStatus),
 		},
 		ReportRate:     v.settings.ReportRate.String(),
 		BatteryLevel:   v.di.BatteryLevel,
@@ -467,23 +329,12 @@ func printInfoHuman(deps Deps, v infoView) {
 	fmt.Fprintf(deps.Stdout, "Device Identity: %s %q (manufacturer %d, product %d)\n",
 		v.id.USBID(), v.id.ProductName, v.di.Manufacturer, v.di.Product)
 	fmt.Fprintf(deps.Stdout, "Firmware:        %s\n", v.di.Version)
-	fmt.Fprintf(deps.Stdout, "Firmware status: %s\n", firmwareStatusText(v.di.FirmwareStatus))
+	fmt.Fprintf(deps.Stdout, "Firmware status: %s\n", protocol.FirmwareStatusText(v.di.FirmwareStatus))
 	fmt.Fprintf(deps.Stdout, "Report Rate:     %s\n", v.settings.ReportRate)
 	fmt.Fprintf(deps.Stdout, "Battery:         %d%% (charge status %d)\n", v.di.BatteryLevel, v.di.ChargeStatus)
 	fmt.Fprintf(deps.Stdout, "Work mode:       %d\n", v.di.WorkMode)
 	fmt.Fprintf(deps.Stdout, "Macro space:     %d bytes\n", v.di.MacroSpaceSize)
 	fmt.Fprintf(deps.Stdout, "ROM size:        %d\n", v.di.RomSize)
-}
-
-func firmwareStatusText(status uint8) string {
-	switch status {
-	case protocol.FirmwareOK:
-		return "ok"
-	case protocol.FirmwareBootloader:
-		return "bootloader (writes will be refused)"
-	default:
-		return fmt.Sprintf("unknown(%d)", status)
-	}
 }
 
 // --- `nutctl get` ---
@@ -496,106 +347,33 @@ func firmwareStatusText(status uint8) string {
 // what a failing check needs for diagnosis — while every
 // "self-check failed: …" line goes to stderr and the exit code is 1.
 
-// deviceState is one full read pass over a Device: every block the v0 read
-// surface shows (docs/protocol.md §3 init sequence).
+// deviceState is one full read pass over a Device plus the Model it came
+// from: every block the v0 read surface shows (docs/protocol.md §3 init
+// sequence), as the device layer's State.
 type deviceState struct {
-	model    device.Model
-	base     protocol.Keymap
-	fn       protocol.Keymap
-	lighting protocol.LightingEffect
-	perKey   protocol.PerKeyRGB
-	settings protocol.Settings
-}
-
-// checkError wraps a device.RunChecks failure. Its lines already name
-// themselves (each starts with "self-check failed: "), so callers print them
-// verbatim instead of re-prefixing them as a generic error.
-type checkError struct{ err error }
-
-func (e *checkError) Error() string { return e.err.Error() }
-func (e *checkError) Unwrap() error { return e.err }
-
-// readFullState opens the selected Device and makes ONE full read pass
-// (GET_KEY, GET_FN_KEY, GET_LED_EFFECT, GET_CUSTOM_LED_DATA, GET_GAME_MODE),
-// then runs device.RunChecks ONCE over the pass. A failed self-check comes
-// back as *checkError ALONGSIDE the state, so callers can show the requested
-// view (the diagnosis a failing check needs) and still fail loudly.
-func readFullState(deps Deps, selector string) (deviceState, error) {
-	info, model, dev, di, err := openSelected(deps, selector)
-	if err != nil {
-		return deviceState{}, err
-	}
-	defer dev.Close()
-	return checkedRead(info, model, dev, di)
+	model device.Model
+	device.State
 }
 
 // checkedRead makes ONE full read pass and runs device.RunChecks ONCE over it
-// (ADR-0003) — the shared verification step of every get/save/load. A failed
-// self-check comes back as *checkError ALONGSIDE the state: the checks gate
-// WRITES, not reads, and the state is exactly what a failing check needs for
-// diagnosis.
-func checkedRead(info hid.Info, model device.Model, dev *protocol.Device, di protocol.DeviceInfo) (deviceState, error) {
-	st, err := readStatePass(dev, info.Path)
+// (session.ReadChecked — ADR-0003) — the shared verification step of every
+// get/save/load. A failed self-check comes back as *device.CheckError
+// ALONGSIDE the state: the checks gate WRITES, not reads, and the state is
+// exactly what a failing check needs for diagnosis.
+func checkedRead(s *device.Session) (deviceState, error) {
+	st, err := s.ReadChecked()
+	return deviceState{model: s.Model, State: st}, err
+}
+
+// readFullState opens the selected Device and makes ONE checked full read
+// pass. The error may be a *device.CheckError alongside the state.
+func readFullState(deps Deps, selector string) (deviceState, error) {
+	s, err := device.Open(deps.Devices, selector)
 	if err != nil {
 		return deviceState{}, err
 	}
-	st.model = model
-	if err := device.RunChecks(model, device.CheckInput{
-		USB:      usbIdentity(info),
-		Reported: firmwareIdentity(di),
-		Base:     st.base,
-		Fn:       st.fn,
-		Lighting: st.lighting,
-	}); err != nil {
-		return st, &checkError{err}
-	}
-	return st, nil
-}
-
-// openSelected identifies the Model, opens the selected Device and verifies
-// it against its own firmware report (openProbe). The caller closes the
-// Device. It is the one way save/load/get reach the wire.
-func openSelected(deps Deps, selector string) (hid.Info, device.Model, *protocol.Device, protocol.DeviceInfo, error) {
-	infos, err := deps.Devices.Enumerate()
-	if err != nil {
-		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, fmt.Errorf("enumerate devices: %w", err)
-	}
-	info, model, err := selectDevice(infos, selector)
-	if err != nil {
-		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, err
-	}
-	dev, di, err := openProbe(deps, info)
-	if err != nil {
-		return hid.Info{}, device.Model{}, nil, protocol.DeviceInfo{}, err
-	}
-	return info, model, dev, di, nil
-}
-
-// readStatePass makes ONE full read pass over an open Device: GET_KEY,
-// GET_FN_KEY, GET_LED_EFFECT, GET_CUSTOM_LED_DATA, GET_GAME_MODE.
-func readStatePass(dev *protocol.Device, path string) (deviceState, error) {
-	ctx := context.Background()
-	st := deviceState{}
-	var err error
-	// The block names come from the protocol layer's errors (they already say
-	// "GET_KEY: …" and friends); here only the probe path is added — the
-	// established openProbe pattern, never a doubled prefix.
-	if st.base, err = dev.Keymap(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
-	}
-	if st.fn, err = dev.FnKeymap(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
-	}
-	if st.lighting, err = dev.LightingEffect(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
-	}
-	if st.perKey, err = dev.PerKeyRGB(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
-	}
-	if st.settings, err = dev.Settings(ctx); err != nil {
-		return deviceState{}, fmt.Errorf("probe %s: %w", path, err)
-	}
-	return st, nil
+	defer s.Close()
+	return checkedRead(s)
 }
 
 // runGet dispatches the `get` subcommands: keymap [--layer base|fn],
@@ -667,7 +445,7 @@ func runGet(args []string, deps Deps) int {
 		layerVal = *layer
 	}
 	if err != nil {
-		var ce *checkError
+		var ce *device.CheckError
 		if errors.As(err, &ce) {
 			// Failed self-check: print the requested view to stdout AND the
 			// joined "self-check failed: …" lines to stderr, exit 1.
@@ -675,7 +453,7 @@ func runGet(args []string, deps Deps) int {
 			// available and the state display is exactly what a failing
 			// check needs for diagnosis.
 			print(deps, st, *jsonOut, layerVal)
-			fmt.Fprintln(deps.Stderr, ce.err)
+			fmt.Fprintln(deps.Stderr, ce.Err)
 			return 1
 		}
 		return fail(deps, err)
@@ -724,22 +502,6 @@ func keyActionJSONFor(a protocol.KeyAction) keyActionJSON {
 	}
 }
 
-// keyActionText renders a Key Action for humans: the page type with its
-// params, e.g. "KEYBOARD(00 29 00)"; DEFAULT renders bare. An unknown page
-// type is the explicit marker with all four wire bytes, e.g.
-// "UNKNOWN(2a 01 02 03)" — never dropped, never a crash.
-func keyActionText(a protocol.KeyAction) string {
-	switch a.Type {
-	case protocol.ActionDefault:
-		return a.Type.String()
-	case protocol.ActionUnknown:
-		return fmt.Sprintf("UNKNOWN(%02x %02x %02x %02x)",
-			a.Raw[0], a.Raw[1], a.Raw[2], a.Raw[3])
-	default:
-		return fmt.Sprintf("%s(%02x %02x %02x)", a.Type, a.Params[0], a.Params[1], a.Params[2])
-	}
-}
-
 // knobGestures returns slot → Knob gesture for the layout table.
 func knobGestures(l device.Layout) map[int]string {
 	out := make(map[int]string, 3)
@@ -775,9 +537,9 @@ func printKeymapJSON(deps Deps, st deviceState, layer string) int {
 	if err != nil {
 		return fail(deps, err)
 	}
-	km := st.base
+	km := st.Base
 	if layer == "fn" {
-		km = st.fn
+		km = st.Fn
 	}
 	gestures := knobGestures(layout)
 	disabled := fnDisabledSlots(layout)
@@ -813,9 +575,9 @@ func printKeymapHuman(deps Deps, st deviceState, layer string) {
 		fail(deps, err)
 		return
 	}
-	km := st.base
+	km := st.Base
 	if layer == "fn" {
-		km = st.fn
+		km = st.Fn
 	}
 	disabled := fnDisabledSlots(layout)
 	gestures := knobGestures(layout)
@@ -828,7 +590,7 @@ func printKeymapHuman(deps Deps, st deviceState, layer string) {
 		if layer == "fn" && disabled[slot] {
 			name += " (fn-disabled)"
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\n", slot, name, keyActionText(km[slot]))
+		fmt.Fprintf(w, "%d\t%s\t%s\n", slot, name, protocol.KeyActionText(km[slot]))
 	}
 	for slot := range km {
 		name, ok := layout.Name(slot)
@@ -878,11 +640,6 @@ type perKeyLEDJSON struct {
 	RGB   string `json:"rgb"`
 }
 
-// hexRGB renders a color as "#rrggbb".
-func hexRGB(r, g, b byte) string {
-	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
-}
-
 // checkCodeText renders the Lighting Effect check code (offsets 14..15) for
 // humans: the observed bytes and which recognized state they are — written
 // (0xaa 0x55, put there by the vendor app's SET path) or factory/unwritten
@@ -900,18 +657,18 @@ func checkCodeText(cc [2]byte) string {
 }
 
 func printLightingJSON(deps Deps, st deviceState) int {
-	le := st.lighting
-	perKey := make([]perKeyLEDJSON, len(st.perKey))
-	for i, e := range st.perKey {
-		perKey[i] = perKeyLEDJSON{LEDID: e.LEDID, RGB: hexRGB(e.R, e.G, e.B)}
+	le := st.Lighting
+	perKey := make([]perKeyLEDJSON, len(st.PerKey))
+	for i, e := range st.PerKey {
+		perKey[i] = perKeyLEDJSON{LEDID: e.LEDID, RGB: protocol.HexRGB(e.R, e.G, e.B)}
 	}
 	return printJSON(deps, lightingJSON{
 		Model: st.model.Name,
 		Effect: lightingEffectJSON{
 			Mode:           le.Mode,
-			RGB:            hexRGB(le.RGB[0], le.RGB[1], le.RGB[2]),
+			RGB:            protocol.HexRGB(le.RGB[0], le.RGB[1], le.RGB[2]),
 			DriverSetting:  le.DriverSetting,
-			SecondaryRGB:   hexRGB(le.SecondaryRGB[0], le.SecondaryRGB[1], le.SecondaryRGB[2]),
+			SecondaryRGB:   protocol.HexRGB(le.SecondaryRGB[0], le.SecondaryRGB[1], le.SecondaryRGB[2]),
 			ColorMode:      le.ColorMode,
 			Brightness:     le.Brightness,
 			Speed:          le.Speed,
@@ -925,14 +682,14 @@ func printLightingJSON(deps Deps, st deviceState) int {
 }
 
 func printLightingHuman(deps Deps, st deviceState) {
-	le := st.lighting
+	le := st.Lighting
 	fmt.Fprintf(deps.Stdout, "Model: %s\n\n", st.model.Name)
 	fmt.Fprintln(deps.Stdout, "Lighting Effect:")
 	w := tabwriter.NewWriter(deps.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "  Mode:\t%d\n", le.Mode)
-	fmt.Fprintf(w, "  Primary color:\t%s\n", hexRGB(le.RGB[0], le.RGB[1], le.RGB[2]))
+	fmt.Fprintf(w, "  Primary color:\t%s\n", protocol.HexRGB(le.RGB[0], le.RGB[1], le.RGB[2]))
 	fmt.Fprintf(w, "  Driver setting:\t%d\n", le.DriverSetting)
-	fmt.Fprintf(w, "  Secondary color:\t%s\n", hexRGB(le.SecondaryRGB[0], le.SecondaryRGB[1], le.SecondaryRGB[2]))
+	fmt.Fprintf(w, "  Secondary color:\t%s\n", protocol.HexRGB(le.SecondaryRGB[0], le.SecondaryRGB[1], le.SecondaryRGB[2]))
 	fmt.Fprintf(w, "  Color mode:\t%d\n", le.ColorMode)
 	fmt.Fprintf(w, "  Brightness:\t%d (range 1-6)\n", le.Brightness)
 	fmt.Fprintf(w, "  Speed:\t%d (range 1-6)\n", le.Speed)
@@ -941,11 +698,11 @@ func printLightingHuman(deps Deps, st deviceState) {
 	fmt.Fprintf(w, "  Check code:\t%s\n", checkCodeText(le.CheckCode))
 	w.Flush()
 
-	fmt.Fprintf(deps.Stdout, "\nPer-Key RGB (%d entries):\n", len(st.perKey))
+	fmt.Fprintf(deps.Stdout, "\nPer-Key RGB (%d entries):\n", len(st.PerKey))
 	w = tabwriter.NewWriter(deps.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "  LED\tCOLOR")
-	for _, e := range st.perKey {
-		fmt.Fprintf(w, "  %d\t%s\n", e.LEDID, hexRGB(e.R, e.G, e.B))
+	for _, e := range st.PerKey {
+		fmt.Fprintf(w, "  %d\t%s\n", e.LEDID, protocol.HexRGB(e.R, e.G, e.B))
 	}
 	w.Flush()
 }
@@ -973,7 +730,7 @@ type settingsJSON struct {
 }
 
 func printSettingsJSON(deps Deps, st deviceState) int {
-	s := st.settings
+	s := st.Settings
 	return printJSON(deps, settingsJSON{
 		Model:              st.model.Name,
 		GameMode:           s.GameMode,
@@ -996,7 +753,7 @@ func printSettingsJSON(deps Deps, st deviceState) int {
 }
 
 func printSettingsHuman(deps Deps, st deviceState) {
-	s := st.settings
+	s := st.Settings
 	fmt.Fprintf(deps.Stdout, "Model: %s\n\n", st.model.Name)
 	w := tabwriter.NewWriter(deps.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "Report rate:\t%s\n", s.ReportRate)
@@ -1029,19 +786,13 @@ func printJSON(deps Deps, v any) int {
 	return 0
 }
 
-const udevHint = `hint: install the udev rule so an unprivileged user can open the Device:
-  sudo cp udev/60-nut87.rules /etc/udev/rules.d/
-  sudo udevadm control --reload && sudo udevadm trigger
-then re-plug the keyboard`
-
-// fail prints an actionable error and returns the runtime exit code.
+// fail prints an actionable error and returns the runtime exit code. The
+// hints are the transport seam's (hid.Hint), so every UI offers the same
+// fix for the same problem.
 func fail(deps Deps, err error) int {
 	fmt.Fprintf(deps.Stderr, "error: %v\n", err)
-	switch {
-	case errors.Is(err, hid.ErrPermission):
-		fmt.Fprintf(deps.Stderr, "%s\n", udevHint)
-	case errors.Is(err, hid.ErrBusy):
-		fmt.Fprintln(deps.Stderr, "hint: another nutctl session (or another tool) is reading this Device — close it and retry (also quit the vendor app if it is running)")
+	if hint := hid.Hint(err); hint != "" {
+		fmt.Fprintln(deps.Stderr, hint)
 	}
 	return 1
 }

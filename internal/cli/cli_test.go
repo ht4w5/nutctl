@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ht4w5/nutctl/internal/fixture"
 	"github.com/ht4w5/nutctl/internal/hid"
@@ -4736,4 +4738,46 @@ func TestSaveNamesTheOffendingArgument(t *testing.T) {
 	if !strings.Contains(errOut, `"b.json"`) {
 		t.Errorf("stderr = %q, want the offending argument named", errOut)
 	}
+}
+
+// Bare `nutctl` opens the TUI (spec user story 2): interactive configuration
+// is the default experience (ADR-0004). Scripted key presses drive the real
+// program against the fake Device — `q` quits from the Device screen.
+func TestBareOpensTheTUI(t *testing.T) {
+	d := nut87(t, "/dev/hidraw3")
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	var out, errOut bytes.Buffer
+	code := Run(nil, Deps{
+		Devices: enum,
+		Stdin:   pacedInput{r: strings.NewReader("q"), pace: 100 * time.Millisecond},
+		Stdout:  &out,
+		Stderr:  &errOut,
+	})
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errOut.String())
+	}
+	for _, want := range []string{
+		"NUT87 at /dev/hidraw3",
+		"Device Identity",
+		"Report Rate",
+		"[1 Device]",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("TUI output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// pacedInput yields scripted key presses slowly enough for the program's
+// frames to render between them, like a human typing (the renderer paints on
+// a ~60fps ticker).
+type pacedInput struct {
+	r    io.Reader
+	pace time.Duration
+}
+
+func (p pacedInput) Read(b []byte) (int, error) {
+	time.Sleep(p.pace)
+	return p.r.Read(b)
 }

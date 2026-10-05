@@ -30,3 +30,19 @@ func Apply(ctx context.Context, dev *protocol.Device, s State) error {
 	}
 	return nil
 }
+
+// ApplyVerified writes a complete State and then proves it landed by reading
+// the Device back (spec user story 22): the read-back diff is the proof,
+// never the write itself. It returns the Device's actual state (the new
+// truth for every caller) and every difference between what was wanted and
+// what the Device reports.
+func (s *Session) ApplyVerified(ctx context.Context, want State) (State, []string, error) {
+	if err := Apply(ctx, s.Dev, want); err != nil {
+		return State{}, nil, err
+	}
+	got, err := s.Read()
+	if err != nil {
+		return State{}, nil, err
+	}
+	return got, StateDiffs(want, got, s.Model), nil
+}

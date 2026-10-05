@@ -51,31 +51,6 @@ func parseWithFile(fs *flag.FlagSet, args []string) (string, error) {
 	}
 }
 
-// stateFileFor is the envelope around one read pass: which Model it came
-// from, on which firmware, under which schema. The golden read of ADR-0003 is
-// just this — one code path for save, golden and restore (ADR-0005).
-func stateFileFor(model device.Model, firmware string, st deviceState) device.StateFile {
-	return device.StateFile{
-		Model:    model.Name,
-		Firmware: firmware,
-		Schema:   device.SchemaCurrent,
-		State:    st.snapshot(),
-	}
-}
-
-// snapshot is the State File's view of one read pass: the five blocks as
-// Device state. The wire markers the SET format forces are not state and do
-// not travel through a State File (device.StateFile).
-func (st deviceState) snapshot() device.State {
-	return device.State{
-		Base:     st.base,
-		Fn:       st.fn,
-		Lighting: st.lighting,
-		PerKey:   st.perKey,
-		Settings: st.settings,
-	}
-}
-
 // runSave writes the Device's current state to a State File at the path the
 // user chose. Like `get`, it saves what the Device reports even when the
 // self-checks fail — the checks gate WRITES to the Device (ADR-0003), and a
@@ -90,17 +65,17 @@ func runSave(args []string, deps Deps) int {
 		return usageError(deps, err)
 	}
 
-	info, model, dev, di, err := openSelected(deps, *selector)
+	s, err := device.Open(deps.Devices, *selector)
 	if err != nil {
 		return fail(deps, err)
 	}
-	defer dev.Close()
+	defer s.Close()
 
-	st, checkErr := checkedRead(info, model, dev, di)
-	if err := device.SaveStateFile(path, stateFileFor(model, di.Version, st)); err != nil {
+	st, checkErr := checkedRead(s)
+	if err := device.SaveStateFile(path, device.StateFileFor(s.Model, s.DeviceInfo.Version, st.State)); err != nil {
 		return fail(deps, err)
 	}
-	fmt.Fprintf(deps.Stdout, "saved %s state (firmware %s) to %s\n", model.Name, di.Version, path)
+	fmt.Fprintf(deps.Stdout, "saved %s state (firmware %s) to %s\n", s.Model.Name, s.DeviceInfo.Version, path)
 
 	if checkErr != nil {
 		fmt.Fprintln(deps.Stderr, checkErr)
@@ -132,11 +107,12 @@ func runLoad(args []string, deps Deps) int {
 		return fail(deps, err)
 	}
 
-	info, model, dev, di, err := openSelected(deps, *selector)
+	s, err := device.Open(deps.Devices, *selector)
 	if err != nil {
 		return fail(deps, err)
 	}
-	defer dev.Close()
+	defer s.Close()
+	info, model, di := s.Info, s.Model, s.DeviceInfo
 
 	// A State File from another Model is refused before anything is written
 	// (spec user story 25); a firmware mismatch warns but proceeds (26).
@@ -152,33 +128,29 @@ func runLoad(args []string, deps Deps) int {
 	// state, self-checks must pass, then the golden-read prompt.
 	if di.FirmwareStatus != protocol.FirmwareOK {
 		return fail(deps, fmt.Errorf(
-			"refusing to write: the Device reports firmware status %s", firmwareStatusText(di.FirmwareStatus)))
+			"refusing to write: the Device reports firmware status %s", protocol.FirmwareStatusText(di.FirmwareStatus)))
 	}
-	st, checkErr := checkedRead(info, model, dev, di)
+	st, checkErr := checkedRead(s)
 	if checkErr != nil {
 		fmt.Fprintln(deps.Stderr, checkErr)
 		fmt.Fprintln(deps.Stderr, "refusing to write: the Device must pass its self-checks before the first write (ADR-0003)")
 		return 1
 	}
-	if err := writeGate(deps, *skipGolden, stateFileFor(model, di.Version, st)); err != nil {
+	if err := writeGate(deps, *skipGolden, device.StateFileFor(model, di.Version, st.State)); err != nil {
 		return fail(deps, err)
 	}
 
-	// Batched writes: the four blocks, one complete transfer each on the
-	// wire (docs/protocol.md §4; the Lighting block is two transfers:
-	// SET_LED_EFFECT + SET_CUSTOM_LED_DATA).
-	if err := device.Apply(context.Background(), dev, sf.State); err != nil {
-		return fail(deps, err)
-	}
-
-	// Read-back verification: the proof the writes landed.
-	back, err := readStatePass(dev, info.Path)
+	// Batched writes (four blocks, one complete transfer each on the wire;
+	// the Lighting block is two transfers: SET_LED_EFFECT +
+	// SET_CUSTOM_LED_DATA), verified by reading the Device back — the proof
+	// the writes landed is the read-back, never the write itself.
+	_, diffs, err := s.ApplyVerified(context.Background(), sf.State)
 	if err != nil {
 		return fail(deps, err)
 	}
-	if diffs := stateDiffs(sf.State, back.snapshot(), model); len(diffs) > 0 {
+	if len(diffs) > 0 {
 		fmt.Fprintln(deps.Stdout, "wrote 4 blocks in batched writes: base, fn, lighting (Lighting Effect + Per-Key RGB), settings")
-		fmt.Fprintf(deps.Stdout, "read-back verification: %d difference(s) (State File → Device):\n", len(diffs))
+		fmt.Fprintln(deps.Stdout, device.DiffHeader(len(diffs)))
 		for _, d := range diffs {
 			fmt.Fprintf(deps.Stdout, "  %s\n", d)
 		}
@@ -205,10 +177,10 @@ func writeGate(deps Deps, skip bool, golden device.StateFile) error {
 	if deps.Stdin == nil {
 		return errNoGoldenAnswer
 	}
-	name := "golden-" + time.Now().Format("20060102-150405") + ".json"
+	name := device.GoldenName(time.Now())
 	reader := bufio.NewReader(deps.Stdin)
 	for {
-		fmt.Fprintf(deps.Stderr, "save current state to ./%s? [Y/n] ", name)
+		fmt.Fprintf(deps.Stderr, "%s ", device.GoldenPrompt(name))
 		line, err := reader.ReadString('\n')
 		answer := strings.ToLower(strings.TrimSpace(line))
 		switch {
@@ -236,92 +208,3 @@ func writeGate(deps Deps, skip bool, golden device.StateFile) error {
 // answer the golden-read prompt.
 var errNoGoldenAnswer = errors.New(
 	"cannot ask about the golden read (no input): rerun with --i-know-what-im-doing to skip it, or run interactively to save it")
-
-// stateDiffs names every difference between the State File's state (want)
-// and the Device's read-back (got) — the read-back verification diff. Wire
-// markers are never compared: the SET format forces them and the State File
-// does not carry them (device.StateFile). Key Slots are named from the
-// Model's layout table where it has a name.
-func stateDiffs(want, got device.State, model device.Model) []string {
-	var diffs []string
-	add := func(format string, a ...any) { diffs = append(diffs, fmt.Sprintf(format, a...)) }
-
-	name := func(slot int) string {
-		if l, err := device.LayoutFor(model); err == nil {
-			if n, ok := l.Name(slot); ok {
-				return fmt.Sprintf("Key Slot %d (%s)", slot, n)
-			}
-		}
-		return fmt.Sprintf("Key Slot %d", slot)
-	}
-	for _, layer := range []struct {
-		label string
-		want  protocol.Keymap
-		got   protocol.Keymap
-	}{{"base", want.Base, got.Base}, {"fn", want.Fn, got.Fn}} {
-		for slot := range layer.want {
-			if layer.want[slot].Raw == layer.got[slot].Raw {
-				continue
-			}
-			add("%s %s: %s → %s", layer.label, name(slot),
-				keyActionText(layer.want[slot]), keyActionText(layer.got[slot]))
-		}
-	}
-
-	for _, f := range []struct {
-		label string
-		want  any
-		got   any
-	}{
-		{"lighting mode", want.Lighting.Mode, got.Lighting.Mode},
-		{"lighting primary color", hexRGB(want.Lighting.RGB[0], want.Lighting.RGB[1], want.Lighting.RGB[2]), hexRGB(got.Lighting.RGB[0], got.Lighting.RGB[1], got.Lighting.RGB[2])},
-		{"lighting secondary color", hexRGB(want.Lighting.SecondaryRGB[0], want.Lighting.SecondaryRGB[1], want.Lighting.SecondaryRGB[2]), hexRGB(got.Lighting.SecondaryRGB[0], got.Lighting.SecondaryRGB[1], got.Lighting.SecondaryRGB[2])},
-		{"lighting color mode", want.Lighting.ColorMode, got.Lighting.ColorMode},
-		{"lighting brightness", want.Lighting.Brightness, got.Lighting.Brightness},
-		{"lighting speed", want.Lighting.Speed, got.Lighting.Speed},
-		{"lighting direction", want.Lighting.Direction, got.Lighting.Direction},
-		{"lighting effect mode type", want.Lighting.EffectModeType, got.Lighting.EffectModeType},
-	} {
-		if f.want != f.got {
-			add("%s: %v → %v", f.label, f.want, f.got)
-		}
-	}
-
-	for i := range want.PerKey {
-		w, g := want.PerKey[i], got.PerKey[i]
-		// Colors only: the ledId byte is the entry index on the wire (derived
-		// on write, device.StateFile) and is never state to compare.
-		if w.R == g.R && w.G == g.G && w.B == g.B {
-			continue
-		}
-		add("per-key RGB entry %d: %s → %s", i, hexRGB(w.R, w.G, w.B), hexRGB(g.R, g.G, g.B))
-	}
-
-	for _, f := range []struct {
-		label string
-		want  any
-		got   any
-	}{
-		{"report rate", want.Settings.ReportRate, got.Settings.ReportRate},
-		{"game mode", want.Settings.GameMode, got.Settings.GameMode},
-		{"Fn switch", want.Settings.FnSwitch, got.Settings.FnSwitch},
-		{"sleep time", want.Settings.SleepTime, got.Settings.SleepTime},
-		{"key delay", want.Settings.KeyDelay, got.Settings.KeyDelay},
-		{"system mode", want.Settings.SystemMode, got.Settings.SystemMode},
-		{"TFT display time", want.Settings.TFTDisplayTime, got.Settings.TFTDisplayTime},
-		{"top dead zone", want.Settings.TopDeadZone, got.Settings.TopDeadZone},
-		{"bottom dead zone", want.Settings.BottomDeadZone, got.Settings.BottomDeadZone},
-		{"stability mode", want.Settings.StabilityMode, got.Settings.StabilityMode},
-		{"auto calibration", want.Settings.AutoCalibration, got.Settings.AutoCalibration},
-		{"single key wakeup", want.Settings.SingleKeyWakeup, got.Settings.SingleKeyWakeup},
-		{"push button mode", want.Settings.PushButtonMode, got.Settings.PushButtonMode},
-		{"NKRO switch", want.Settings.NKROSwitch, got.Settings.NKROSwitch},
-		{"wireless report rate", want.Settings.WirelessReportRate, got.Settings.WirelessReportRate},
-		{"power mode", want.Settings.PowerMode, got.Settings.PowerMode},
-	} {
-		if f.want != f.got {
-			add("settings %s: %v → %v", f.label, f.want, f.got)
-		}
-	}
-	return diffs
-}

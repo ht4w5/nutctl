@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ht4w5/nutctl/internal/protocol"
 )
@@ -65,6 +66,26 @@ type stateFileOut struct {
 	Firmware string `json:"firmware"`
 	Schema   int    `json:"schema"`
 	State    State  `json:"state"`
+}
+
+// StateFileFor wraps one State snapshot in the envelope: which Model it came
+// from, on which firmware, under which schema. The golden read of ADR-0003
+// is just this — one code path for save, golden and restore (ADR-0005).
+func StateFileFor(m Model, firmware string, st State) StateFile {
+	return StateFile{Model: m.Name, Firmware: firmware, Schema: SchemaCurrent, State: st}
+}
+
+// GoldenName is the default filename the write gate offers for the golden
+// read (ADR-0003): golden-<timestamp>.json in the working directory. The
+// name is offered, never forced (ADR-0005).
+func GoldenName(now time.Time) string {
+	return "golden-" + now.Format("20060102-150405") + ".json"
+}
+
+// GoldenPrompt is the write gate's golden-read prompt line (ADR-0003) — one
+// spelling of the offer, in every UI.
+func GoldenPrompt(name string) string {
+	return "save current state to ./" + name + "? [Y/n]"
 }
 
 // SaveStateFile writes the State File to path — pretty-printed JSON, 2-space
