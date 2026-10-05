@@ -41,10 +41,10 @@ type Deps struct {
 	Now     func() time.Time // clock for the golden-read filename (tests pin it)
 }
 
-// The four screens (PLAN Phase 5), in `1`–`4` order. The Keys and Lighting
-// screens are placeholders until their tickets land; the shell, the Device
-// screen, the State File actions and the Settings screen's edit mechanics
-// are this build's surface.
+// The four screens (PLAN Phase 5), in `1`–`4` order. The Lighting screen
+// is a placeholder until its ticket lands; the shell, the Device screen,
+// the State File actions, the Keys screen and the Settings screen's edit
+// mechanics are this build's surface.
 type screen int
 
 const (
@@ -57,7 +57,8 @@ const (
 var screenNames = []string{"Device", "Keys", "Lighting", "Settings"}
 
 // mode is what the keyboard currently drives: the normal screen, a State
-// File path prompt, or the write gate's golden-read prompt.
+// File path prompt, the write gate's golden-read prompt, or the Keys
+// screen's rebind picker.
 type mode int
 
 const (
@@ -65,6 +66,7 @@ const (
 	modeSavePath
 	modeLoadPath
 	modeGate
+	modeBind
 )
 
 // Styles. Frames render plain under a non-color terminal (and in tests),
@@ -95,6 +97,11 @@ type Model struct {
 	request writeRequest    // the write waiting at (or past) the gate
 	golden  string          // filename the write gate offers for the golden read
 	sel     settingRow      // the Settings screen's row cursor
+
+	keyLayer keyLayer  // the Keys screen's Layer shown and edited
+	keyRow   int       // the Keys screen's row cursor
+	keyTop   int       // first table row in the window
+	bind     bindState // the rebind picker's state (bind.go)
 
 	notice []string // supporting lines of the last action (warnings, diffs)
 	status string   // the status bar: what just happened / what is true now
@@ -194,6 +201,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updatePath(msg)
 		case modeGate:
 			return m.updateGate(msg)
+		case modeBind:
+			return m.updateBind(msg)
 		}
 	case savedMsg:
 		return m.updateSaved(msg)
@@ -252,7 +261,10 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.revert()
 		return m, nil
 	default:
-		if m.screen == screenSettings {
+		switch m.screen {
+		case screenKeys:
+			return m.updateKeys(msg)
+		case screenSettings:
 			return m.updateSettings(msg)
 		}
 	}
@@ -353,11 +365,15 @@ func (m *Model) body() []string {
 		return m.loadBody()
 	case modeGate:
 		return m.gateBody()
+	case modeBind:
+		return m.bindBody()
 	}
-	if m.screen == screenDevice {
+	switch m.screen {
+	case screenDevice:
 		return m.deviceBody()
-	}
-	if m.screen == screenSettings {
+	case screenKeys:
+		return m.keysBody()
+	case screenSettings:
 		return m.settingsBody()
 	}
 	return m.placeholderBody()
@@ -378,6 +394,8 @@ func (m *Model) help() string {
 		return "enter confirm · esc cancel · ctrl+c quit"
 	case modeGate:
 		return "y/enter save the golden read and " + m.request.kind.verb + " · n skip the golden read · esc cancel · ctrl+c quit"
+	case modeBind:
+		return "enter bind · esc cancel · ctrl+c quit"
 	}
 	return "1-4/tab switch screen · s save · l load · a apply · r revert · q quit"
 }

@@ -161,10 +161,12 @@ func (m *Model) writeCmd(s *device.Session, current device.State, req writeReque
 // updateRefreshed routes the fresh checked read: a Device that fails its
 // self-checks is never written (ADR-0003), and what it just reported becomes
 // the state on screen — and the golden read's content. The fresh read also
-// rebases the edit buffer AND the payload of the write waiting at the gate
-// (device.Rebase): the user's edits keep their values, everything they did
-// not touch follows the Device — so the write sends the user's changes and
-// nothing stale.
+// rebases the edit buffer (device.Rebase): the user's edits keep their
+// values, everything they did not touch follows the Device. The payload of
+// an APPLY waiting at the gate is that same merge, so the write sends the
+// user's changes and nothing stale; a LOAD's payload is the State File
+// itself — a complete snapshot is written byte for byte, exactly as
+// `nutctl load` writes it (ticket 03), never merged with anything.
 func (m *Model) updateRefreshed(msg refreshedMsg) (tea.Model, tea.Cmd) {
 	m.busy = false
 	m.notice = nil
@@ -181,7 +183,9 @@ func (m *Model) updateRefreshed(msg refreshedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.request = msg.req
-	m.request.want = merged
+	if !msg.req.kind.wholeState {
+		m.request.want = merged
+	}
 	m.golden = device.GoldenName(m.deps.Now())
 	m.mode = modeGate
 	return m, nil

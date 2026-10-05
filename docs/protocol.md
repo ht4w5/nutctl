@@ -286,8 +286,26 @@ entry's raw bytes carry `AA 55` at 510..511). **(observed 2026-10-05, ticket
 | END | key value 1 | key value 2 | — |
 | MACRO | macroId (0..99) | pass-through | pass-through |
 | DKS | slot index 0..63 (data in GET/SET_MAGNETIC_AXIS_DKS_DATA) | — | — |
-| FUNC | 24-bit BE function id (`b1<<16\|b2<<8\|b3`) → `Ko` table (77 entries: factory reset, BT ch 1-5, wireless reconnect, F-row switch, battery, WIN/MAC/ANDROID/IOS, lighting effect/color/brightness/speed, lock Win, side light, light bar, ALT+TAB, WIN+E, CTRL_CAP swap, knob mode toggle, macro on/off, …) | | |
+| FUNC | 24-bit BE function id (`b1<<16\|b2<<8\|b3`) → `Ko` table (**287 entries**, values 1..287: factory reset, BT ch 1-5, wireless reconnect, F-row switch, battery, WIN/MAC/ANDROID/IOS, lighting effect/color/brightness/speed, lock Win, side light, light bar, ALT+TAB, WIN+E, CTRL_CAP swap, knob mode toggle, macro on/off, …) | | |
 | FUNC_V2 | pageType ≥ 128: `keyA = (pageType&0x7F)<<8\|param1`, `keyB = param2<<8\|param3`; values < 4096 are keycodes, ≥ 4096 index the FUNC_V2 table | | |
+
+**Key Action catalog (observed 2026-10-05, ticket 06).** What a Key Slot can be
+bound to is data in the bundle, extracted verbatim into
+[`internal/protocol/catalog.json`](../internal/protocol/catalog.json) (its `source`
+field names the tables): the picker's four kinds of Key Action (CONTEXT.md) are the bundle's `basicChars`
+(`Pn`, 50 keyboard legends) + `extendChars` (`Un`, 57), `specialChars` (`so`: 7
+MOUSE + 17 CONSUMER_KEY entries) and `funcChars` (`Ko`, the 287 FUNC entries
+above) — English names from the bundle locale (`mouse_textN` / `medium_textN` /
+`fun_textN` in `decoded/en-cKmNgyvw.js`). Two encoding facts of the bundle are
+mirrored by the constructors in `internal/protocol`: `lo()` writes KEYBOARD with
+the keycode in param2 only (param1/param3 are 0 — even for modifiers; the
+bundle's reader `dl()` matches such entries back by value), and MOUSE entries
+carry their axis in param1 (1 = buttons, 3 = wheel) with the value in param2. A Key Action is named only when all four wire
+bytes match a catalog entry exactly (`protocol.KeyActionName`); anything else
+renders as its raw bytes — names never collide. The NUT87's own config
+(`3141-34828-NUT87.ts`) adds `fnDisabledKeyIds:[1..12]` (the Fn Layer binds no
+F-row key) and no per-model function list — the picker offers the whole `Ko`
+table.
 
 ### GET_MACRO / SET_MACRO
 

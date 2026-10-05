@@ -274,15 +274,11 @@ func TestScreensAreNavigable(t *testing.T) {
 	m := newModel(t, &hidfake.Enumerator{Devices: []*hidfake.Device{d}})
 
 	drive(t, m, key("2"))
-	wantFrame(t, m, `
-nutctl — NUT87 at /dev/hidraw3 (firmware 1.20)
-1 Device  [2 Keys]  3 Lighting  4 Settings
-
-Keys
-  (placeholder — this screen is not built yet; the Device screen reads, saves and loads state)
-
-status: ready
-help: 1-4/tab switch screen · s save · l load · a apply · r revert · q quit`)
+	// The Keys screen's own frames live in keys_test.go; here the shell's
+	// contract is the tab bar and the navigation.
+	if got := frame(m); !strings.Contains(got, "1 Device  [2 Keys]  3 Lighting  4 Settings") {
+		t.Errorf("`2` must jump to the Keys screen:\n%s", got)
+	}
 
 	drive(t, m, key("4"))
 	if got := frame(m); !strings.Contains(got, "1 Device  2 Keys  3 Lighting  [4 Settings]") {

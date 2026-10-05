@@ -436,12 +436,12 @@ func TestGetKeymapHumanOutput(t *testing.T) {
 	for _, want := range []string{
 		"Model: NUT87",
 		"Layer: base",
-		"Esc", // every Key Slot is listed with its display name
-		"KEYBOARD(00 29 00)",
+		"Esc",                        // every Key Slot is listed with its display name
+		`keyboard key "Esc"`,         // ... and its Key Action, named (the picker's words)
 		"Volume Up (knob clockwise)", // Knob gestures are ordinary rows
 		"Mute (knob press)",
 		"Volume Down (knob counter-clockwise)",
-		"CONSUMER(e9 00 00)",
+		`consumer key "Volume +"`,
 		"DEFAULT",
 	} {
 		if !strings.Contains(out, want) {
@@ -454,7 +454,7 @@ func TestGetKeymapHumanOutput(t *testing.T) {
 	if got := keySlotRows(out); got != 128 {
 		t.Errorf("get keymap lists %d Key Slot rows, want 128", got)
 	}
-	if !regexp.MustCompile(`(?m)^29\s+\(firmware default — no physical key\)\s+KEYBOARD\(00 53 00\)$`).MatchString(out) {
+	if !regexp.MustCompile(`(?m)^29\s+\(firmware default — no physical key\)\s+keyboard key "Num Lock"$`).MatchString(out) {
 		t.Errorf("get keymap output lacks the firmware-matrix Key Slot 29 row:\n%s", out)
 	}
 	if !regexp.MustCompile(`(?m)^112\s+\(not in layout\)\s+DEFAULT$`).MatchString(out) {
@@ -492,8 +492,8 @@ func TestGetKeymapFnLayerHumanOutput(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Layer: fn",
-		"FUNC(00 00 01)", // Fn layer slot 0
-		"FUNC(00 00 19)", // Fn layer slot 108
+		`Function "Restore Factory Settings"`,         // Fn layer slot 0
+		`Function "Side Light Brightness Adjustment"`, // Fn layer slot 108
 		// Fn-disabled Key Slots stay visible but marked — their Key Action
 		// is still what the Device reports.
 		"F2 (fn-disabled)",

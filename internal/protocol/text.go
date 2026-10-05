@@ -6,10 +6,16 @@ import "fmt"
 // The CLI and the TUI both use these, so a Key Action or a firmware status
 // never reads two ways.
 
-// KeyActionText renders a Key Action for humans: the page type with its
-// params, e.g. "KEYBOARD(00 29 00)"; DEFAULT renders bare. An unknown page
-// type is the explicit marker with all four wire bytes, e.g.
-// "UNKNOWN(2a 01 02 03)" — never dropped, never a crash.
+// KeyActionText renders a Key Action for humans. A Key Action the catalog
+// names (by its exact wire bytes) renders as that name with the kind of Key
+// Action CONTEXT.md calls it — `keyboard key "Esc"`, `consumer key
+// "Volume +"`, `mouse button "Left mouse button"`, `Function "Restore
+// Factory Settings"` — the words the rebind picker offers it under
+// (KeyActionName). Anything else renders as its page type with its
+// raw params, e.g. "KEYBOARD(00 29 00)"; DEFAULT renders bare. An unknown
+// page type is the explicit marker with all four wire bytes, e.g.
+// "UNKNOWN(2a 01 02 03)" — never dropped, never a crash. Naming is exact:
+// bytes the catalog does not carry stay visible as bytes.
 func KeyActionText(a KeyAction) string {
 	switch a.Type {
 	case ActionDefault:
@@ -17,9 +23,11 @@ func KeyActionText(a KeyAction) string {
 	case ActionUnknown:
 		return fmt.Sprintf("UNKNOWN(%02x %02x %02x %02x)",
 			a.Raw[0], a.Raw[1], a.Raw[2], a.Raw[3])
-	default:
-		return fmt.Sprintf("%s(%02x %02x %02x)", a.Type, a.Params[0], a.Params[1], a.Params[2])
 	}
+	if name := KeyActionName(a); name != "" {
+		return fmt.Sprintf("%s %q", kindOf(a.Type), name)
+	}
+	return fmt.Sprintf("%s(%02x %02x %02x)", a.Type, a.Params[0], a.Params[1], a.Params[2])
 }
 
 // FirmwareStatusText renders the firmware status (GET_DEVICE_INFO,

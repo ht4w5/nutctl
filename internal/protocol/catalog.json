@@ -1,0 +1,1697 @@
+{
+ "source": "Extracted from the WEIKAV web configurator bundle (decoded/layout-classic-DSv6_q0d.js, this repo's reference corpus): the basicChars (Pn), extendChars (Un), specialChars (so) and funcChars (Ko) tables, with English names from the bundle locale (decoded/en-cKmNgyvw.js: mouse_textN/medium_textN/fun_textN). Wire encodings are the bundle's own lo() writer (docs/protocol.md §4). Keyboard legends are verbatim except backslashes un-escaped and \"Space Bar\" spelled \"Spacebar\" to match the layout table.",
+ "keyboard": [
+  {
+   "name": "A",
+   "keyCode": 4
+  },
+  {
+   "name": "B",
+   "keyCode": 5
+  },
+  {
+   "name": "C",
+   "keyCode": 6
+  },
+  {
+   "name": "D",
+   "keyCode": 7
+  },
+  {
+   "name": "E",
+   "keyCode": 8
+  },
+  {
+   "name": "F",
+   "keyCode": 9
+  },
+  {
+   "name": "G",
+   "keyCode": 10
+  },
+  {
+   "name": "H",
+   "keyCode": 11
+  },
+  {
+   "name": "I",
+   "keyCode": 12
+  },
+  {
+   "name": "J",
+   "keyCode": 13
+  },
+  {
+   "name": "K",
+   "keyCode": 14
+  },
+  {
+   "name": "L",
+   "keyCode": 15
+  },
+  {
+   "name": "M",
+   "keyCode": 16
+  },
+  {
+   "name": "N",
+   "keyCode": 17
+  },
+  {
+   "name": "O",
+   "keyCode": 18
+  },
+  {
+   "name": "P",
+   "keyCode": 19
+  },
+  {
+   "name": "Q",
+   "keyCode": 20
+  },
+  {
+   "name": "R",
+   "keyCode": 21
+  },
+  {
+   "name": "S",
+   "keyCode": 22
+  },
+  {
+   "name": "T",
+   "keyCode": 23
+  },
+  {
+   "name": "U",
+   "keyCode": 24
+  },
+  {
+   "name": "V",
+   "keyCode": 25
+  },
+  {
+   "name": "W",
+   "keyCode": 26
+  },
+  {
+   "name": "X",
+   "keyCode": 27
+  },
+  {
+   "name": "Y",
+   "keyCode": 28
+  },
+  {
+   "name": "Z",
+   "keyCode": 29
+  },
+  {
+   "name": "1 !",
+   "keyCode": 30
+  },
+  {
+   "name": "2 @",
+   "keyCode": 31
+  },
+  {
+   "name": "3 #",
+   "keyCode": 32
+  },
+  {
+   "name": "4 $",
+   "keyCode": 33
+  },
+  {
+   "name": "5 %",
+   "keyCode": 34
+  },
+  {
+   "name": "6 ^",
+   "keyCode": 35
+  },
+  {
+   "name": "7 &",
+   "keyCode": 36
+  },
+  {
+   "name": "8 *",
+   "keyCode": 37
+  },
+  {
+   "name": "9 (",
+   "keyCode": 38
+  },
+  {
+   "name": "0 )",
+   "keyCode": 39
+  },
+  {
+   "name": "ˉ -",
+   "keyCode": 45
+  },
+  {
+   "name": "= +",
+   "keyCode": 46
+  },
+  {
+   "name": "[ {",
+   "keyCode": 47
+  },
+  {
+   "name": "] }",
+   "keyCode": 48
+  },
+  {
+   "name": "\\ |",
+   "keyCode": 49
+  },
+  {
+   "name": "; :",
+   "keyCode": 51
+  },
+  {
+   "name": "' \"",
+   "keyCode": 52
+  },
+  {
+   "name": "` ~",
+   "keyCode": 53
+  },
+  {
+   "name": ",<",
+   "keyCode": 54
+  },
+  {
+   "name": ".>",
+   "keyCode": 55
+  },
+  {
+   "name": "/?",
+   "keyCode": 56
+  },
+  {
+   "name": "\\",
+   "keyCode": 100
+  },
+  {
+   "name": "\\",
+   "keyCode": 50
+  },
+  {
+   "name": "Fn",
+   "keyCode": 175
+  },
+  {
+   "name": "Esc",
+   "keyCode": 41
+  },
+  {
+   "name": "Tab",
+   "keyCode": 43
+  },
+  {
+   "name": "Caps",
+   "keyCode": 57
+  },
+  {
+   "name": "Backspace",
+   "keyCode": 42
+  },
+  {
+   "name": "Enter",
+   "keyCode": 40
+  },
+  {
+   "name": "Spacebar",
+   "keyCode": 44
+  },
+  {
+   "name": "L-Ctrl",
+   "keyCode": 224,
+   "param1": 1
+  },
+  {
+   "name": "R-Ctrl",
+   "keyCode": 228,
+   "param1": 16
+  },
+  {
+   "name": "L-Shift",
+   "keyCode": 225,
+   "param1": 2
+  },
+  {
+   "name": "R-Shift",
+   "keyCode": 229,
+   "param1": 32
+  },
+  {
+   "name": "L-Alt",
+   "keyCode": 226,
+   "param1": 4
+  },
+  {
+   "name": "R-Alt",
+   "keyCode": 230,
+   "param1": 64
+  },
+  {
+   "name": "L-Win",
+   "keyCode": 227,
+   "param1": 8
+  },
+  {
+   "name": "Super",
+   "keyCode": 101
+  },
+  {
+   "name": "↑",
+   "keyCode": 82
+  },
+  {
+   "name": "↓",
+   "keyCode": 81
+  },
+  {
+   "name": "→",
+   "keyCode": 79
+  },
+  {
+   "name": "←",
+   "keyCode": 80
+  },
+  {
+   "name": "Home",
+   "keyCode": 74
+  },
+  {
+   "name": "End",
+   "keyCode": 77
+  },
+  {
+   "name": "Ins",
+   "keyCode": 73
+  },
+  {
+   "name": "Del",
+   "keyCode": 76
+  },
+  {
+   "name": "PgUp",
+   "keyCode": 75
+  },
+  {
+   "name": "PgDn",
+   "keyCode": 78
+  },
+  {
+   "name": "Print",
+   "keyCode": 70
+  },
+  {
+   "name": "Scroll",
+   "keyCode": 71
+  },
+  {
+   "name": "Pause",
+   "keyCode": 72
+  },
+  {
+   "name": "F1",
+   "keyCode": 58
+  },
+  {
+   "name": "F2",
+   "keyCode": 59
+  },
+  {
+   "name": "F3",
+   "keyCode": 60
+  },
+  {
+   "name": "F4",
+   "keyCode": 61
+  },
+  {
+   "name": "F5",
+   "keyCode": 62
+  },
+  {
+   "name": "F6",
+   "keyCode": 63
+  },
+  {
+   "name": "F7",
+   "keyCode": 64
+  },
+  {
+   "name": "F8",
+   "keyCode": 65
+  },
+  {
+   "name": "F9",
+   "keyCode": 66
+  },
+  {
+   "name": "F10",
+   "keyCode": 67
+  },
+  {
+   "name": "F11",
+   "keyCode": 68
+  },
+  {
+   "name": "F12",
+   "keyCode": 69
+  },
+  {
+   "name": "Num Lock",
+   "keyCode": 83
+  },
+  {
+   "name": "Num 1",
+   "keyCode": 89
+  },
+  {
+   "name": "Num 2",
+   "keyCode": 90
+  },
+  {
+   "name": "Num 3",
+   "keyCode": 91
+  },
+  {
+   "name": "Num 4",
+   "keyCode": 92
+  },
+  {
+   "name": "Num 5",
+   "keyCode": 93
+  },
+  {
+   "name": "Num 6",
+   "keyCode": 94
+  },
+  {
+   "name": "Num 7",
+   "keyCode": 95
+  },
+  {
+   "name": "Num 8",
+   "keyCode": 96
+  },
+  {
+   "name": "Num 9",
+   "keyCode": 97
+  },
+  {
+   "name": "Num 0",
+   "keyCode": 98
+  },
+  {
+   "name": "Num /",
+   "keyCode": 84
+  },
+  {
+   "name": "Num .",
+   "keyCode": 99
+  },
+  {
+   "name": "Num *",
+   "keyCode": 85
+  },
+  {
+   "name": "Num -",
+   "keyCode": 86
+  },
+  {
+   "name": "Num +",
+   "keyCode": 87
+  },
+  {
+   "name": "Num Enter",
+   "keyCode": 88
+  },
+  {
+   "name": "⊠",
+   "keyCode": 111
+  }
+ ],
+ "consumer": [
+  {
+   "name": "My Computer",
+   "usage": 404
+  },
+  {
+   "name": "Calculator",
+   "usage": 402
+  },
+  {
+   "name": "Email",
+   "usage": 394
+  },
+  {
+   "name": "Multi media",
+   "usage": 387
+  },
+  {
+   "name": "Play /Pause",
+   "usage": 205
+  },
+  {
+   "name": "Stop Playback",
+   "usage": 183
+  },
+  {
+   "name": "Previous Track",
+   "usage": 182
+  },
+  {
+   "name": "Next Track",
+   "usage": 181
+  },
+  {
+   "name": "Volume +",
+   "usage": 233
+  },
+  {
+   "name": "Volume -",
+   "usage": 234
+  },
+  {
+   "name": "Mute",
+   "usage": 226
+  },
+  {
+   "name": "Home",
+   "usage": 547
+  },
+  {
+   "name": "Refresh",
+   "usage": 551
+  },
+  {
+   "name": "Forward",
+   "usage": 549
+  },
+  {
+   "name": "Backward",
+   "usage": 548
+  },
+  {
+   "name": "Favorites",
+   "usage": 554
+  },
+  {
+   "name": "Search",
+   "usage": 545
+  }
+ ],
+ "mouse": [
+  {
+   "name": "Left mouse button",
+   "param1": 1,
+   "value": 1
+  },
+  {
+   "name": "Middle mouse button",
+   "param1": 1,
+   "value": 4
+  },
+  {
+   "name": "Right mouse button",
+   "param1": 1,
+   "value": 2
+  },
+  {
+   "name": "Mouse scroll up",
+   "param1": 3,
+   "value": 1
+  },
+  {
+   "name": "Mouse scroll down",
+   "param1": 3,
+   "value": 255
+  },
+  {
+   "name": "Mouse forward button",
+   "param1": 1,
+   "value": 16
+  },
+  {
+   "name": "Mouse backward button",
+   "param1": 1,
+   "value": 8
+  }
+ ],
+ "functions": [
+  {
+   "id": 1,
+   "name": "Restore Factory Settings"
+  },
+  {
+   "id": 2,
+   "name": "Bluetooth Channel 1"
+  },
+  {
+   "id": 3,
+   "name": "Bluetooth Channel 2"
+  },
+  {
+   "id": 4,
+   "name": "Bluetooth Channel 3"
+  },
+  {
+   "id": 5,
+   "name": "Wireless Reconnect"
+  },
+  {
+   "id": 6,
+   "name": "F-Key Switch"
+  },
+  {
+   "id": 7,
+   "name": "Check Battery"
+  },
+  {
+   "id": 8,
+   "name": "WIN"
+  },
+  {
+   "id": 9,
+   "name": "MAC"
+  },
+  {
+   "id": 10,
+   "name": "ANDROID"
+  },
+  {
+   "id": 11,
+   "name": "Light Effect Switch"
+  },
+  {
+   "id": 12,
+   "name": "Light Color Switch"
+  },
+  {
+   "id": 13,
+   "name": "Increase Light Brightness"
+  },
+  {
+   "id": 14,
+   "name": "Decrease Light Brightness"
+  },
+  {
+   "id": 15,
+   "name": "Increase Light Speed"
+  },
+  {
+   "id": 16,
+   "name": "Decrease Light Speed"
+  },
+  {
+   "id": 17,
+   "name": "Turn Off Lights"
+  },
+  {
+   "id": 18,
+   "name": "ALT + TAB"
+  },
+  {
+   "id": 19,
+   "name": "WIN + E"
+  },
+  {
+   "id": 20,
+   "name": "WIN + TAB"
+  },
+  {
+   "id": 21,
+   "name": "WIN + H"
+  },
+  {
+   "id": 22,
+   "name": "Lock Win"
+  },
+  {
+   "id": 23,
+   "name": "Side Light Effect Switch"
+  },
+  {
+   "id": 24,
+   "name": "Side Light Color Switch"
+  },
+  {
+   "id": 25,
+   "name": "Side Light Brightness Adjustment"
+  },
+  {
+   "id": 26,
+   "name": "Side Light Speed Adjustment"
+  },
+  {
+   "id": 27,
+   "name": "Front Light Strip Effect Switch"
+  },
+  {
+   "id": 28,
+   "name": "Front Light Strip Speed Adjustment"
+  },
+  {
+   "id": 29,
+   "name": "Front Light Strip Color Switch"
+  },
+  {
+   "id": 30,
+   "name": "Ctrl + UP"
+  },
+  {
+   "id": 31,
+   "name": "USB Mode"
+  },
+  {
+   "id": 32,
+   "name": "Lighting Direction"
+  },
+  {
+   "id": 33,
+   "name": "ALT + ESC"
+  },
+  {
+   "id": 34,
+   "name": "SHIFT + GAT"
+  },
+  {
+   "id": 35,
+   "name": "Screen Left Swipe"
+  },
+  {
+   "id": 36,
+   "name": "Screen Right Swipe"
+  },
+  {
+   "id": 37,
+   "name": "Screen Confirm"
+  },
+  {
+   "id": 38,
+   "name": "Test Lighting"
+  },
+  {
+   "id": 39,
+   "name": "Turn Off Screen"
+  },
+  {
+   "id": 40,
+   "name": "Matrix Light Effect Switch"
+  },
+  {
+   "id": 41,
+   "name": "Matrix Brightness +"
+  },
+  {
+   "id": 42,
+   "name": "Matrix Brightness -"
+  },
+  {
+   "id": 43,
+   "name": "Matrix Speed -"
+  },
+  {
+   "id": 44,
+   "name": "Matrix Speed +"
+  },
+  {
+   "id": 45,
+   "name": "Single Key / Full Key Wireless Wake-up Switch"
+  },
+  {
+   "id": 46,
+   "name": "Knob Mode Switch"
+  },
+  {
+   "id": 47,
+   "name": "WIN + X"
+  },
+  {
+   "id": 48,
+   "name": "Swap CTL/CAP"
+  },
+  {
+   "id": 49,
+   "name": "Disable/Enable Driver Settings"
+  },
+  {
+   "id": 50,
+   "name": "CTRL+Down"
+  },
+  {
+   "id": 51,
+   "name": "Lighting Effect Forward Switch"
+  },
+  {
+   "id": 52,
+   "name": "Lighting Effect Reverse Switch"
+  },
+  {
+   "id": 53,
+   "name": "WIN + D"
+  },
+  {
+   "id": 54,
+   "name": "Audio Reactive Light Color Switch"
+  },
+  {
+   "id": 55,
+   "name": "Audio Reactive Light Mode Switch"
+  },
+  {
+   "id": 56,
+   "name": "Audio Reactive Light Toggle"
+  },
+  {
+   "id": 57,
+   "name": "Home"
+  },
+  {
+   "id": 58,
+   "name": "IOS"
+  },
+  {
+   "id": 59,
+   "name": "Matrix Screen Test Mode"
+  },
+  {
+   "id": 60,
+   "name": "Matrix Screen Test Color"
+  },
+  {
+   "id": 61,
+   "name": "Front Light Strip Brightness Switch"
+  },
+  {
+   "id": 62,
+   "name": "Matrix Screen Toggle"
+  },
+  {
+   "id": 63,
+   "name": "GIF Mode"
+  },
+  {
+   "id": 64,
+   "name": "Front LED Strip Speed +"
+  },
+  {
+   "id": 65,
+   "name": "Front LED Strip Speed -"
+  },
+  {
+   "id": 66,
+   "name": "Front LED Strip Brightness +"
+  },
+  {
+   "id": 67,
+   "name": "Front LED Strip Brightness -"
+  },
+  {
+   "id": 68,
+   "name": "Block/enable key shortcuts"
+  },
+  {
+   "id": 69,
+   "name": "Bluetooth Channel 4"
+  },
+  {
+   "id": 70,
+   "name": "Bluetooth Channel 5"
+  },
+  {
+   "id": 71,
+   "name": "Custom Lights 1"
+  },
+  {
+   "id": 72,
+   "name": "Custom Lights 2"
+  },
+  {
+   "id": 73,
+   "name": "Turn on/off ultimate power saving"
+  },
+  {
+   "id": 74,
+   "name": "Side light color block color"
+  },
+  {
+   "id": 75,
+   "name": "Turn on the driver"
+  },
+  {
+   "id": 76,
+   "name": "RT precision switch"
+  },
+  {
+   "id": 77,
+   "name": "Lamp effect upper and lower light switch"
+  },
+  {
+   "id": 78,
+   "name": "Switch the lighting effect direction"
+  },
+  {
+   "id": 79,
+   "name": "Direction key conversion"
+  },
+  {
+   "id": 80,
+   "name": "Backlight brightness cycle switching"
+  },
+  {
+   "id": 81,
+   "name": "Backlight speed cycle switching"
+  },
+  {
+   "id": 82,
+   "name": "Switch USB mode"
+  },
+  {
+   "id": 83,
+   "name": "Turn off side lights"
+  },
+  {
+   "id": 84,
+   "name": "Switch the display language to Chinese"
+  },
+  {
+   "id": 85,
+   "name": "Switch the display language to English"
+  },
+  {
+   "id": 86,
+   "name": "CTRL + SPACEBAR"
+  },
+  {
+   "id": 87,
+   "name": "Side light RT deep light effect"
+  },
+  {
+   "id": 88,
+   "name": "WIN + SPACEBAR"
+  },
+  {
+   "id": 89,
+   "name": "LOGO LED ON/OFF"
+  },
+  {
+   "id": 90,
+   "name": "Switch dot matrix screen color"
+  },
+  {
+   "id": 91,
+   "name": "Light bar overlay mode"
+  },
+  {
+   "id": 92,
+   "name": "ALT + SPACEBAR"
+  },
+  {
+   "id": 93,
+   "name": "One-click white light"
+  },
+  {
+   "id": 94,
+   "name": "Screenshot of WIN SHF S"
+  },
+  {
+   "id": 95,
+   "name": "Turn on/off APM count"
+  },
+  {
+   "id": 96,
+   "name": "Turn on/off ultimate power saving"
+  },
+  {
+   "id": 97,
+   "name": "Enter the animation with one click"
+  },
+  {
+   "id": 98,
+   "name": "Custom Lights 3"
+  },
+  {
+   "id": 99,
+   "name": "Custom light recording"
+  },
+  {
+   "id": 100,
+   "name": "LOGO light switch"
+  },
+  {
+   "id": 101,
+   "name": "8K data testing"
+  },
+  {
+   "id": 102,
+   "name": "SOCD function switch"
+  },
+  {
+   "id": 103,
+   "name": "Light effect reset"
+  },
+  {
+   "id": 104,
+   "name": "Main lighting effect/side lighting effect brightness plus"
+  },
+  {
+   "id": 105,
+   "name": "Main lighting effect/side lighting effect brightness reduction"
+  },
+  {
+   "id": 106,
+   "name": "Main lighting effect/side lighting effect speed plus"
+  },
+  {
+   "id": 107,
+   "name": "Main lighting effect/side lighting effect speed reduction"
+  },
+  {
+   "id": 108,
+   "name": "Frequency test"
+  },
+  {
+   "id": 109,
+   "name": "WIN->MAC switch back and forth"
+  },
+  {
+   "id": 110,
+   "name": "Side light brightness"
+  },
+  {
+   "id": 111,
+   "name": "Side light brightness-"
+  },
+  {
+   "id": 112,
+   "name": "HOME->END"
+  },
+  {
+   "id": 113,
+   "name": "Enter test mode"
+  },
+  {
+   "id": 114,
+   "name": "ALT_Convert"
+  },
+  {
+   "id": 115,
+   "name": "ENT_Direction conversion"
+  },
+  {
+   "id": 116,
+   "name": "Switch to the direction keys"
+  },
+  {
+   "id": 117,
+   "name": "DELETE->HOME"
+  },
+  {
+   "id": 118,
+   "name": "END->INSERT"
+  },
+  {
+   "id": 119,
+   "name": "PAGEUP->PRINT"
+  },
+  {
+   "id": 120,
+   "name": "PAGEDOWN->PAUSE"
+  },
+  {
+   "id": 121,
+   "name": "Game mode switch"
+  },
+  {
+   "id": 122,
+   "name": "Light box brightness"
+  },
+  {
+   "id": 123,
+   "name": "Light box brightness-"
+  },
+  {
+   "id": 124,
+   "name": "Lightbox speed"
+  },
+  {
+   "id": 125,
+   "name": "Lightbox speed-"
+  },
+  {
+   "id": 126,
+   "name": "LOGO light effect switching"
+  },
+  {
+   "id": 127,
+   "name": "Lightbox diffusion mode color switching"
+  },
+  {
+   "id": 128,
+   "name": "Lightbox effect switching"
+  },
+  {
+   "id": 129,
+   "name": "Lightbox color switching"
+  },
+  {
+   "id": 130,
+   "name": "Increased brightness of pickup light"
+  },
+  {
+   "id": 131,
+   "name": "The brightness of the pickup light is reduced"
+  },
+  {
+   "id": 132,
+   "name": "Switching the background color of the pickup light"
+  },
+  {
+   "id": 133,
+   "name": "Pickup light direction switching"
+  },
+  {
+   "id": 134,
+   "name": "WIN+。"
+  },
+  {
+   "id": 135,
+   "name": "CTRL+WIN+SPACEBAR"
+  },
+  {
+   "id": 136,
+   "name": "WIN+SHIFT+3"
+  },
+  {
+   "id": 137,
+   "name": "WIN+SHIFT+4"
+  },
+  {
+   "id": 138,
+   "name": "Turn on the button light below the screen"
+  },
+  {
+   "id": 139,
+   "name": "Red light always on"
+  },
+  {
+   "id": 140,
+   "name": "Green light is always on"
+  },
+  {
+   "id": 141,
+   "name": "Blue light always on"
+  },
+  {
+   "id": 142,
+   "name": "Custom lighting 4"
+  },
+  {
+   "id": 143,
+   "name": "Custom lighting 5"
+  },
+  {
+   "id": 144,
+   "name": "lock full key"
+  },
+  {
+   "id": 145,
+   "name": "WIN+I"
+  },
+  {
+   "id": 146,
+   "name": "WIN+L"
+  },
+  {
+   "id": 147,
+   "name": "side light speed"
+  },
+  {
+   "id": 148,
+   "name": "Side light speed-"
+  },
+  {
+   "id": 149,
+   "name": "Side light direction adjustment"
+  },
+  {
+   "id": 150,
+   "name": "Switch rate of return"
+  },
+  {
+   "id": 151,
+   "name": "PAGEUP->INSERT"
+  },
+  {
+   "id": 152,
+   "name": "PAGEDOWN->END"
+  },
+  {
+   "id": 153,
+   "name": "Manual calibration"
+  },
+  {
+   "id": 154,
+   "name": "12/24 time switch"
+  },
+  {
+   "id": 155,
+   "name": "Custom lighting effect switching"
+  },
+  {
+   "id": 156,
+   "name": "windows"
+  },
+  {
+   "id": 157,
+   "name": "pageup, pagedown lock"
+  },
+  {
+   "id": 158,
+   "name": "CMD lock"
+  },
+  {
+   "id": 159,
+   "name": "Switch buzzer mode"
+  },
+  {
+   "id": 160,
+   "name": "Turn on/off pickup light"
+  },
+  {
+   "id": 161,
+   "name": "Display switch homepage"
+  },
+  {
+   "id": 162,
+   "name": "Ambient lighting effect brightness adjustment"
+  },
+  {
+   "id": 163,
+   "name": "Ambient lighting effect speed adjustment"
+  },
+  {
+   "id": 164,
+   "name": "Ambient lighting effect color switching"
+  },
+  {
+   "id": 165,
+   "name": "Ambient lighting effect switching"
+  },
+  {
+   "id": 166,
+   "name": "Light color forward switching"
+  },
+  {
+   "id": 167,
+   "name": "Light color reverse switching"
+  },
+  {
+   "id": 168,
+   "name": "LED switch under the knob"
+  },
+  {
+   "id": 169,
+   "name": "Wired mode switching"
+  },
+  {
+   "id": 170,
+   "name": "Switch indicator light mode"
+  },
+  {
+   "id": 171,
+   "name": "Switch between numeric keypad and Fn keypad"
+  },
+  {
+   "id": 172,
+   "name": "GAT"
+  },
+  {
+   "id": 173,
+   "name": "Encoder light"
+  },
+  {
+   "id": 174,
+   "name": "8K return rate test"
+  },
+  {
+   "id": 175,
+   "name": "light under screen"
+  },
+  {
+   "id": 176,
+   "name": "side light switch"
+  },
+  {
+   "id": 177,
+   "name": "SHIFT_Squestion mark"
+  },
+  {
+   "id": 178,
+   "name": "AI volume plus"
+  },
+  {
+   "id": 179,
+   "name": "AI volume reduction"
+  },
+  {
+   "id": 180,
+   "name": "AI screen brightness plus"
+  },
+  {
+   "id": 181,
+   "name": "AI screen brightness reduction"
+  },
+  {
+   "id": 182,
+   "name": "Restore factory settings (FN R_ALT ESC)"
+  },
+  {
+   "id": 183,
+   "name": "DKS switch"
+  },
+  {
+   "id": 184,
+   "name": "Outbound SIRI"
+  },
+  {
+   "id": 185,
+   "name": "LOGO light switch"
+  },
+  {
+   "id": 186,
+   "name": "Love light mode"
+  },
+  {
+   "id": 187,
+   "name": "6 keys/all keys without rollover"
+  },
+  {
+   "id": 188,
+   "name": "LOGO light color switching"
+  },
+  {
+   "id": 189,
+   "name": "Switch the lighting effect in love mode"
+  },
+  {
+   "id": 190,
+   "name": "Switch to calculator mode"
+  },
+  {
+   "id": 191,
+   "name": "Turn on/off lightbox"
+  },
+  {
+   "id": 192,
+   "name": "Display switching user animation"
+  },
+  {
+   "id": 193,
+   "name": "Lighting effect direction left"
+  },
+  {
+   "id": 194,
+   "name": "Light effect direction right"
+  },
+  {
+   "id": 195,
+   "name": "Switch to APP key"
+  },
+  {
+   "id": 196,
+   "name": "Lighting effect switch 1"
+  },
+  {
+   "id": 197,
+   "name": "Lighting effect switch 2"
+  },
+  {
+   "id": 198,
+   "name": "Lighting effect switching 3"
+  },
+  {
+   "id": 199,
+   "name": "Lighting effect switching 4"
+  },
+  {
+   "id": 200,
+   "name": "profile1 switch"
+  },
+  {
+   "id": 201,
+   "name": "profile2 switch"
+  },
+  {
+   "id": 202,
+   "name": "profile3 switch"
+  },
+  {
+   "id": 203,
+   "name": "profile4 switch"
+  },
+  {
+   "id": 204,
+   "name": "Typing display"
+  },
+  {
+   "id": 205,
+   "name": "Exit test mode"
+  },
+  {
+   "id": 206,
+   "name": "LEFTALT+LEFTGUI+Q"
+  },
+  {
+   "id": 207,
+   "name": "LOGO light brightness switch"
+  },
+  {
+   "id": 208,
+   "name": "LOGO light speed switching"
+  },
+  {
+   "id": 209,
+   "name": "Custom shortcut command 1"
+  },
+  {
+   "id": 210,
+   "name": "CTRL+SHIFT+O"
+  },
+  {
+   "id": 211,
+   "name": "One-click driver entry"
+  },
+  {
+   "id": 212,
+   "name": "Turn on custom shortcut recording"
+  },
+  {
+   "id": 213,
+   "name": "Turn off custom shortcut recording"
+  },
+  {
+   "id": 214,
+   "name": "Open the official website"
+  },
+  {
+   "id": 215,
+   "name": "Switch the color of the love light effect"
+  },
+  {
+   "id": 216,
+   "name": "CTRL+DOWN"
+  },
+  {
+   "id": 217,
+   "name": "1~ converted to F1~F12"
+  },
+  {
+   "id": 218,
+   "name": "Convert Y~CMA to PRINT~PAGEDOWN"
+  },
+  {
+   "id": 219,
+   "name": "?, R_ALT, APP, R_CTRL switch to direction keys"
+  },
+  {
+   "id": 220,
+   "name": "Light speed adjustment"
+  },
+  {
+   "id": 221,
+   "name": "Offset frequency test mode"
+  },
+  {
+   "id": 222,
+   "name": "FN+HOME"
+  },
+  {
+   "id": 223,
+   "name": "USB light effect switching"
+  },
+  {
+   "id": 224,
+   "name": "USB light speed switching"
+  },
+  {
+   "id": 225,
+   "name": "USB light brightness switching"
+  },
+  {
+   "id": 226,
+   "name": "USB light color switching"
+  },
+  {
+   "id": 227,
+   "name": "Switch button delay"
+  },
+  {
+   "id": 228,
+   "name": "Dot matrix character mode"
+  },
+  {
+   "id": 229,
+   "name": "Turn on touch mode"
+  },
+  {
+   "id": 230,
+   "name": "Full battery detection"
+  },
+  {
+   "id": 231,
+   "name": "Charging indicator switch"
+  },
+  {
+   "id": 232,
+   "name": "Toggle maximum brightness"
+  },
+  {
+   "id": 233,
+   "name": "CTRL+P"
+  },
+  {
+   "id": 234,
+   "name": "CTRL+C"
+  },
+  {
+   "id": 235,
+   "name": "CTRL+V"
+  },
+  {
+   "id": 236,
+   "name": "CTRL+S"
+  },
+  {
+   "id": 237,
+   "name": "Switch RT configuration 1"
+  },
+  {
+   "id": 238,
+   "name": "Switch RT configuration 2"
+  },
+  {
+   "id": 239,
+   "name": "Switch RT configuration 3"
+  },
+  {
+   "id": 240,
+   "name": "Switch RT configuration 4"
+  },
+  {
+   "id": 241,
+   "name": "Switching up and down light positions"
+  },
+  {
+   "id": 242,
+   "name": "win+M"
+  },
+  {
+   "id": 243,
+   "name": "F1~F12 mode switching"
+  },
+  {
+   "id": 244,
+   "name": "SHIFT+DOT"
+  },
+  {
+   "id": 245,
+   "name": "SHIFT+CMA"
+  },
+  {
+   "id": 246,
+   "name": "Fader_Volume"
+  },
+  {
+   "id": 247,
+   "name": "Push rod_backlight brightness"
+  },
+  {
+   "id": 248,
+   "name": "Fader_screen brightness"
+  },
+  {
+   "id": 249,
+   "name": "Dynamic light effect switch"
+  },
+  {
+   "id": 250,
+   "name": "Turn on and off the upper light box"
+  },
+  {
+   "id": 251,
+   "name": "Left and right side light switching"
+  },
+  {
+   "id": 252,
+   "name": "Turn on and off the left and right side lights"
+  },
+  {
+   "id": 253,
+   "name": "Turn off all lights"
+  },
+  {
+   "id": 254,
+   "name": "Switch custom lights"
+  },
+  {
+   "id": 255,
+   "name": "6 keys without rollover"
+  },
+  {
+   "id": 256,
+   "name": "No rollover for all keys"
+  },
+  {
+   "id": 257,
+   "name": "Lighting effect switching on the front light bar"
+  },
+  {
+   "id": 258,
+   "name": "Light bar brightness switch on the front"
+  },
+  {
+   "id": 259,
+   "name": "Front lower light bar light effect switching"
+  },
+  {
+   "id": 260,
+   "name": "Brightness switch of front lower light bar"
+  },
+  {
+   "id": 261,
+   "name": "Switch to Turkish"
+  },
+  {
+   "id": 262,
+   "name": "Switch Japanese"
+  },
+  {
+   "id": 263,
+   "name": "Side light brightness plus"
+  },
+  {
+   "id": 264,
+   "name": "Side light brightness decreases"
+  },
+  {
+   "id": 265,
+   "name": "CTRL+X"
+  },
+  {
+   "id": 266,
+   "name": "WIN+C"
+  },
+  {
+   "id": 267,
+   "name": "WIN+V"
+  },
+  {
+   "id": 268,
+   "name": "Dot matrix screen pattern mode switching"
+  },
+  {
+   "id": 269,
+   "name": "task manager"
+  },
+  {
+   "id": 270,
+   "name": "ScrollLock"
+  },
+  {
+   "id": 271,
+   "name": "Screen Home Mode"
+  },
+  {
+   "id": 272,
+   "name": "WIN+S"
+  },
+  {
+   "id": 273,
+   "name": "Lock F1-F12 and combo key switching"
+  },
+  {
+   "id": 274,
+   "name": "Increase LOGO light brightness"
+  },
+  {
+   "id": 275,
+   "name": "Decrease LOGO light brightness"
+  },
+  {
+   "id": 276,
+   "name": "Wired/Wireless mode switch"
+  },
+  {
+   "id": 277,
+   "name": "NumLock indicator light switch"
+  },
+  {
+   "id": 278,
+   "name": "Touch bar screen brightness mode"
+  },
+  {
+   "id": 279,
+   "name": "Touch bar volume mode"
+  },
+  {
+   "id": 280,
+   "name": "Touch bar backlight brightness mode"
+  },
+  {
+   "id": 281,
+   "name": "Touch bar backlight speed mode"
+  },
+  {
+   "id": 282,
+   "name": "Enter/exit key low latency mode"
+  },
+  {
+   "id": 283,
+   "name": "Enter low power mode"
+  },
+  {
+   "id": 284,
+   "name": "Cycle screen GIF"
+  },
+  {
+   "id": 285,
+   "name": "Switch sleep time"
+  },
+  {
+   "id": 286,
+   "name": "Multi-window Switch"
+  },
+  {
+   "id": 287,
+   "name": "One-click pairing"
+  }
+ ]
+}
