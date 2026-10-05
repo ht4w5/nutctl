@@ -44,6 +44,48 @@ func FirmwareStatusText(status uint8) string {
 	}
 }
 
+// LightingModeText renders an effect mode of the Lighting Effect block for
+// humans: its wire value and the name the bundle's effect table gives it
+// (LightingModeFor) — `11 Flowing with the Waves`. A value no table names
+// keeps its raw form, marked: naming is exact, bytes stay visible.
+func LightingModeText(value uint8) string {
+	if value == LightingOff {
+		// No table entry names it — the bundle's lighting switch simply
+		// writes mode 0 to turn the backlight off (docs/protocol.md §4).
+		// The meaning is observed; the word is ours.
+		return "0 off"
+	}
+	if m, ok := LightingModeFor(value); ok {
+		return fmt.Sprintf("%d %s", value, m.Name)
+	}
+	return fmt.Sprintf("%d (unknown mode)", value)
+}
+
+// DirectionText renders the Lighting Effect's direction byte for humans:
+// the arrow the bundle's own direction buttons write for it
+// (docs/protocol.md §4). A value outside those four keeps its raw form.
+func DirectionText(v uint8) string {
+	switch v {
+	case DirectionRight:
+		return "right"
+	case DirectionLeft:
+		return "left"
+	case DirectionUp:
+		return "up"
+	case DirectionDown:
+		return "down"
+	default:
+		return fmt.Sprintf("unknown(%d)", v)
+	}
+}
+
+// RangeText renders a ranged wire value for humans — the one spelling the
+// CLI and the TUI share (`6 (range 1-6)`): the value beside the range the
+// Model advertises for it (device.Model.Lighting).
+func RangeText(v, min, max uint8) string {
+	return fmt.Sprintf("%d (range %d-%d)", v, min, max)
+}
+
 // HexRGB renders a color as "#rrggbb".
 func HexRGB(r, g, b byte) string {
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)

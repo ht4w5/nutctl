@@ -683,17 +683,18 @@ func printLightingJSON(deps Deps, st deviceState) int {
 
 func printLightingHuman(deps Deps, st deviceState) {
 	le := st.Lighting
+	caps := st.model.Lighting
 	fmt.Fprintf(deps.Stdout, "Model: %s\n\n", st.model.Name)
 	fmt.Fprintln(deps.Stdout, "Lighting Effect:")
 	w := tabwriter.NewWriter(deps.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "  Mode:\t%d\n", le.Mode)
+	fmt.Fprintf(w, "  Mode:\t%s\n", protocol.LightingModeText(le.Mode))
 	fmt.Fprintf(w, "  Primary color:\t%s\n", protocol.HexRGB(le.RGB[0], le.RGB[1], le.RGB[2]))
 	fmt.Fprintf(w, "  Driver setting:\t%d\n", le.DriverSetting)
 	fmt.Fprintf(w, "  Secondary color:\t%s\n", protocol.HexRGB(le.SecondaryRGB[0], le.SecondaryRGB[1], le.SecondaryRGB[2]))
 	fmt.Fprintf(w, "  Color mode:\t%d\n", le.ColorMode)
-	fmt.Fprintf(w, "  Brightness:\t%d (range 1-6)\n", le.Brightness)
-	fmt.Fprintf(w, "  Speed:\t%d (range 1-6)\n", le.Speed)
-	fmt.Fprintf(w, "  Direction:\t%d\n", le.Direction)
+	fmt.Fprintf(w, "  Brightness:\t%s\n", protocol.RangeText(le.Brightness, caps.BrightnessMin, caps.BrightnessMax))
+	fmt.Fprintf(w, "  Speed:\t%s\n", protocol.RangeText(le.Speed, caps.SpeedMin, caps.SpeedMax))
+	fmt.Fprintf(w, "  Direction:\t%s\n", protocol.DirectionText(le.Direction))
 	fmt.Fprintf(w, "  Effect mode type:\t%d\n", le.EffectModeType)
 	fmt.Fprintf(w, "  Check code:\t%s\n", checkCodeText(le.CheckCode))
 	w.Flush()

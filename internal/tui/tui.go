@@ -41,10 +41,11 @@ type Deps struct {
 	Now     func() time.Time // clock for the golden-read filename (tests pin it)
 }
 
-// The four screens (PLAN Phase 5), in `1`–`4` order. The Lighting screen
-// is a placeholder until its ticket lands; the shell, the Device screen,
-// the State File actions, the Keys screen and the Settings screen's edit
-// mechanics are this build's surface.
+// The four screens (PLAN Phase 5), in `1`–`4` order: the Device screen, the
+// Keys screen, the Lighting screen (both halves of lighting, ticket 07) and
+// the Settings screen — the shell, the Device screen, the State File
+// actions and every edit screen's shared edit mechanics are this build's
+// surface.
 type screen int
 
 const (
@@ -57,8 +58,8 @@ const (
 var screenNames = []string{"Device", "Keys", "Lighting", "Settings"}
 
 // mode is what the keyboard currently drives: the normal screen, a State
-// File path prompt, the write gate's golden-read prompt, or the Keys
-// screen's rebind picker.
+// File path prompt, the write gate's golden-read prompt, the Keys screen's
+// rebind picker, or the Lighting screen's color editor.
 type mode int
 
 const (
@@ -67,6 +68,7 @@ const (
 	modeLoadPath
 	modeGate
 	modeBind
+	modeColor
 )
 
 // Styles. Frames render plain under a non-color terminal (and in tests),
@@ -102,6 +104,9 @@ type Model struct {
 	keyRow   int       // the Keys screen's row cursor
 	keyTop   int       // first table row in the window
 	bind     bindState // the rebind picker's state (bind.go)
+
+	light lightState // the Lighting screen's halves and cursors (lighting.go)
+	color colorState // the color editor's state (lighting.go)
 
 	notice []string // supporting lines of the last action (warnings, diffs)
 	status string   // the status bar: what just happened / what is true now
@@ -203,6 +208,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateGate(msg)
 		case modeBind:
 			return m.updateBind(msg)
+		case modeColor:
+			return m.updateColor(msg)
 		}
 	case savedMsg:
 		return m.updateSaved(msg)
@@ -264,6 +271,8 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case screenKeys:
 			return m.updateKeys(msg)
+		case screenLighting:
+			return m.updateLighting(msg)
 		case screenSettings:
 			return m.updateSettings(msg)
 		}
@@ -367,25 +376,20 @@ func (m *Model) body() []string {
 		return m.gateBody()
 	case modeBind:
 		return m.bindBody()
+	case modeColor:
+		return m.colorBody()
 	}
 	switch m.screen {
 	case screenDevice:
 		return m.deviceBody()
 	case screenKeys:
 		return m.keysBody()
+	case screenLighting:
+		return m.lightingBody()
 	case screenSettings:
 		return m.settingsBody()
 	}
-	return m.placeholderBody()
-}
-
-// placeholderBody is a screen whose edit mechanics are not built yet — the
-// shell is navigable and honest about what it does not do.
-func (m *Model) placeholderBody() []string {
-	return []string{
-		screenNames[m.screen],
-		"  (placeholder — this screen is not built yet; the Device screen reads, saves and loads state)",
-	}
+	return nil
 }
 
 func (m *Model) help() string {
@@ -396,6 +400,8 @@ func (m *Model) help() string {
 		return "y/enter save the golden read and " + m.request.kind.verb + " · n skip the golden read · esc cancel · ctrl+c quit"
 	case modeBind:
 		return "enter bind · esc cancel · ctrl+c quit"
+	case modeColor:
+		return "enter set · esc cancel · ctrl+c quit"
 	}
 	return "1-4/tab switch screen · s save · l load · a apply · r revert · q quit"
 }

@@ -25,12 +25,7 @@ func StateDiffs(from, to State, m Model) []string {
 	add := func(format string, a ...any) { diffs = append(diffs, fmt.Sprintf(format, a...)) }
 
 	name := func(slot int) string {
-		if l, err := LayoutFor(m); err == nil {
-			if n, ok := l.Name(slot); ok {
-				return fmt.Sprintf("Key Slot %d (%s)", slot, n)
-			}
-		}
-		return fmt.Sprintf("Key Slot %d", slot)
+		return fmt.Sprintf("Key Slot %d%s", slot, SlotTag(m, slot))
 	}
 	for _, layer := range []struct {
 		label string
@@ -46,18 +41,28 @@ func StateDiffs(from, to State, m Model) []string {
 		}
 	}
 
+	// The effect mode and the direction render in the same words every UI
+	// names them in (protocol.LightingModeText / DirectionText — one
+	// spelling of a Lighting Effect); the fields that are their own raw
+	// values compare and render as those values.
+	if from.Lighting.Mode != to.Lighting.Mode {
+		add("lighting mode: %s → %s",
+			protocol.LightingModeText(from.Lighting.Mode), protocol.LightingModeText(to.Lighting.Mode))
+	}
+	if from.Lighting.Direction != to.Lighting.Direction {
+		add("lighting direction: %s → %s",
+			protocol.DirectionText(from.Lighting.Direction), protocol.DirectionText(to.Lighting.Direction))
+	}
 	for _, f := range []struct {
 		label string
 		from  any
 		to    any
 	}{
-		{"lighting mode", from.Lighting.Mode, to.Lighting.Mode},
 		{"lighting primary color", protocol.HexRGB(from.Lighting.RGB[0], from.Lighting.RGB[1], from.Lighting.RGB[2]), protocol.HexRGB(to.Lighting.RGB[0], to.Lighting.RGB[1], to.Lighting.RGB[2])},
 		{"lighting secondary color", protocol.HexRGB(from.Lighting.SecondaryRGB[0], from.Lighting.SecondaryRGB[1], from.Lighting.SecondaryRGB[2]), protocol.HexRGB(to.Lighting.SecondaryRGB[0], to.Lighting.SecondaryRGB[1], to.Lighting.SecondaryRGB[2])},
 		{"lighting color mode", from.Lighting.ColorMode, to.Lighting.ColorMode},
 		{"lighting brightness", from.Lighting.Brightness, to.Lighting.Brightness},
 		{"lighting speed", from.Lighting.Speed, to.Lighting.Speed},
-		{"lighting direction", from.Lighting.Direction, to.Lighting.Direction},
 		{"lighting effect mode type", from.Lighting.EffectModeType, to.Lighting.EffectModeType},
 	} {
 		if f.from != f.to {
@@ -68,11 +73,13 @@ func StateDiffs(from, to State, m Model) []string {
 	for i := range from.PerKey {
 		w, g := from.PerKey[i], to.PerKey[i]
 		// Colors only: the ledId byte is the entry index on the wire (derived
-		// on write, StateFile) and is never state to compare.
+		// on write, StateFile) and is never state to compare. The entry IS a
+		// Key Slot (docs/protocol.md §4: the app colors key i at
+		// customLedData[i]), so it is named from the layout table like one.
 		if w.R == g.R && w.G == g.G && w.B == g.B {
 			continue
 		}
-		add("per-key RGB entry %d: %s → %s", i, protocol.HexRGB(w.R, w.G, w.B), protocol.HexRGB(g.R, g.G, g.B))
+		add("per-key RGB entry %d%s: %s → %s", i, SlotTag(m, i), protocol.HexRGB(w.R, w.G, w.B), protocol.HexRGB(g.R, g.G, g.B))
 	}
 
 	for _, f := range []struct {
@@ -102,4 +109,17 @@ func StateDiffs(from, to State, m Model) []string {
 		}
 	}
 	return diffs
+}
+
+// SlotTag is the parenthetical display name of a Key Slot from the Model's
+// layout table — the tag the diff's names carry (`Key Slot 0 (Esc)`,
+// `per-key RGB entry 0 (Esc)`): ` (Esc)`, or empty for a Key Slot outside
+// the table. The TUI names slots with the same words (one spelling).
+func SlotTag(m Model, slot int) string {
+	if l, err := LayoutFor(m); err == nil {
+		if n, ok := l.Name(slot); ok {
+			return fmt.Sprintf(" (%s)", n)
+		}
+	}
+	return ""
 }

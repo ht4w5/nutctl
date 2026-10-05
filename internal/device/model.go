@@ -52,6 +52,23 @@ type Model struct {
 	// vendor config carries the same list (settingsConfig.reportRateList,
 	// in Hz), so this is data observed, not a guess.
 	ReportRates []protocol.ReportRate
+	// Lighting is the capability set for the Lighting Effect block
+	// (CONTEXT.md): the effect modes this Model's firmware offers and the
+	// brightness/speed ranges its vendor config advertises — what an editor
+	// may offer. The vendor config carries the same values
+	// (lightingConfig.customEffect, minBrightness/maxBrightness,
+	// minSpeed/maxSpeed), so this is data observed, not a guess.
+	Lighting LightingCapability
+}
+
+// LightingCapability is what a Model advertises for the Lighting Effect
+// block: the effect modes it offers, in the vendor's display order, and the
+// ranges brightness and speed may take (the acceptance's "constrained to
+// the Model's advertised ranges").
+type LightingCapability struct {
+	Modes                        []protocol.LightingMode
+	BrightnessMin, BrightnessMax uint8
+	SpeedMin, SpeedMax           uint8
 }
 
 // Known Models. NUT75 shares the NUT87's USB product id; it is recognized so
@@ -63,6 +80,16 @@ var (
 		Supported: true,
 		ReportRates: []protocol.ReportRate{
 			protocol.ReportRate1K, protocol.ReportRate4K, protocol.ReportRate8K,
+		},
+		// The vendor config 3141-34828-NUT87.ts carries lightingConfig:
+		// customEffect [23, 24, 25] (the appended effect modes),
+		// minBrightness 1, maxBrightness 6, minSpeed 1, maxSpeed 6.
+		Lighting: LightingCapability{
+			Modes:         protocol.LightingModes(23, 24, 25),
+			BrightnessMin: 1,
+			BrightnessMax: 6,
+			SpeedMin:      1,
+			SpeedMax:      6,
 		},
 	}
 	NUT75 = Model{

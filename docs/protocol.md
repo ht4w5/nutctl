@@ -1,8 +1,11 @@
 # NUT87 wire protocol (extracted from `weikav.driveall.cn` bundle)
 
-Source: `decoded/layout-classic-DSv6_q0d.js` (WebHID driver of the official web configurator).
-Everything below is quoted from that bundle, not guessed. Where the bundle only implies
-something, it is marked **(infer)** or listed under "Open questions".
+Source: `decoded/` (the vendor bundle's own code and data — see
+[`decoded/README.md`](../decoded/README.md)), chiefly
+`decoded/layout-classic-DSv6_q0d.js` (WebHID driver of the official web
+configurator) and its lazy chunks. Everything below is quoted from that
+corpus, not guessed. Where the bundle only implies something, it is marked
+**(infer)** or listed under "Open questions".
 
 ## 1. Device identification
 
@@ -249,7 +252,41 @@ offsets 14..15.
 13 -    14..15 check code: 0xAA 0x55 (SET path only — see observed reality below)
 ```
 
-NUT87 ranges: brightness 1..6, speed 1..6, custom effects `[23,24,25]`.
+NUT87 ranges: brightness 1..6, speed 1..6. **(extracted 2026-10-05, ticket 07)**
+the Model's own config (`3141-34828-NUT87.ts`, `lightingConfig`:
+`customEffect:[23,24,25], minBrightness:1, maxBrightness:6, minSpeed:1,
+maxSpeed:6`) is the advertised capability set those ranges come from — and
+`customEffect` there means the three **appended effect modes** the NUT87 adds
+to the default table (23 Rainbow Windmill, 24 Colorful gathering, 25 Neon
+shadows), not its Per-Key RGB mode.
+
+**Effect modes (extracted 2026-10-05, ticket 07).** The effect-mode table
+lives in the bundle's lighting config chunk
+(`decoded/lighting-C48tIL8G.js`, fetched 2026-10-05 from
+`https://weikav.driveall.cn/assets/lighting-C48tIL8G.js` — a lazy chunk the
+HAR corpus does not carry; provenance in [`decoded/README.md`](../decoded/README.md)): `defalutLightingModeList` + `appendLightingModeList`,
+English names from the bundle locale (`lighting_iconN`,
+`decoded/en-cKmNgyvw.js`). The app's own selection rule (`useProtocol` in
+`decoded/layout-classic-DSv6_q0d.js`): a Model offers the default table plus
+the appended entries its `lightingConfig.customEffect` selects, sorted by the
+table's `sort` field. The NUT87 therefore offers 1..19, 23, 24, 25 and 128.
+Everything is extracted verbatim into
+[`internal/protocol/lighting.json`](../internal/protocol/lighting.json) (its
+`source` field); each entry carries the fields the mode animates —
+`isShowSpeed` / `isShowDirection` / `isShowColor` — because those are the
+bundle's own claims about what the effect does with the block.
+
+Field semantics (evidence in `decoded/lighting-C48tIL8G.js` and the Lighting
+Edit pane, `decoded/lightingPane-DBmdx-GA.js` — both fetched 2026-10-05 from
+`https://weikav.driveall.cn/assets/…`, see `decoded/README.md`):
+
+| byte | meaning |
+|---|---|
+| `mode` | the effect mode (named in `lighting.json`); **128 = Custom** — the Per-Key RGB table colors the keys (the chunk's `CUSTOM_LIGHTING_MODE`); **0 = backlight off** (the vendor app's lighting switch writes `mode 0` when switched off; it carries no effect name) |
+| `colorMode` | `0` = single color ("monochrome"), `1` = "RGB" — the Lighting Edit pane's radio offers exactly these two |
+| `direction` | the arrow the app's own direction buttons write: `0` right, `1` left, `2` up, `3` down. Each mode animates ONE pair — `directionPosition:"left"` modes (11, 12, 16, 18, 23, 25) use 0/1, the one `"top"` mode (10) uses 2/3 — and the pane only ever writes that pair for that mode. A mode with no `isShowDirection` ignores the byte entirely (the pane shows no direction control for it), so a round-tripping tool carries it unchanged rather than inventing a value |
+| `effectModeType` | sub-mode of effect 254 (`heartwarming moment`, not offered by the NUT87): `0` heart breathing, `1` background breathing, `2` both, `3` always on (`effectModeTypeOptions` in the chunk) |
+| `brightness`, `speed` | the pane's sliders: `min..max` from the Model's `lightingConfig` (NUT87: 1..6 both), step 1 |
 
 **(observed 2026-10-05)** on a real NUT87 (firmware 1.20, recorded in
 `testdata/captures/get_led_effect/`) offsets 14..15 read `00 00`, **not**
@@ -265,7 +302,15 @@ forever after, factory/unwritten reads `00 00`.
 ### GET_CUSTOM_LED_DATA / SET_CUSTOM_LED_DATA — 512 bytes
 
 128 entries × 4 bytes: `ledId, red, green, blue`. On SET the app writes
-`b0 = index` as the ledId. (Index ↔ key mapping is the model's LED id order.)
+`b0 = index` as the ledId.
+
+**Entries are Key Slots (observed 2026-10-05, ticket 07).** The app paints
+key `k.value` at `customLedData[k.value]` (its key-group paint handler in
+`decoded/layout-classic-DSv6_q0d.js`: `h.value[m.value[row][col].value] = …`
+over `customLedData` and `keyList`), so entry *i* IS the Key Slot *i* —
+CONTEXT.md's "per-slot colors" — and a slot's name from the Model's layout
+table names its entry. A key marked `disabledLight` cannot be lit at all; the
+NUT87 config marks none.
 
 **(observed 2026-10-05)** the recorded factory block (firmware 1.20,
 `testdata/captures/get_custom_led_data/`) is all zeroes except the same tail

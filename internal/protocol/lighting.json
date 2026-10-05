@@ -1,0 +1,39 @@
+{
+ "source": "Extracted from the WEIKAV web configurator bundle's lighting config chunk (decoded/lighting-C48tIL8G.js — fetched 2026-10-05 from https://weikav.driveall.cn/assets/lighting-C48tIL8G.js, a lazy chunk the HAR corpus does not carry; see decoded/README.md): the defalutLightingModeList (\"default\") and appendLightingModeList (\"appended\") effect tables, with English names from the bundle locale (decoded/en-cKmNgyvw.js: lighting_iconN). The selection rule is the bundle's own (decoded/layout-classic-DSv6_q0d.js, useProtocol): a Model's offering is \"default\" plus the \"appended\" entries whose value is in its lightingConfig.customEffect, sorted by sort. Kept beyond the parsed fields: text, the bundle's locale key, as each name's provenance. Dropped as unused by this build: icon classes and the speedValue/directionValue defaults (this tool never rewrites a field the user did not edit) and the appended 254 entry's effectModeTypeOptions (recorded in docs/protocol.md §4 — the NUT87 does not offer that mode).",
+ "default": [
+  {"value": 1, "name": "Static Bright", "text": "lighting_icon1", "sort": 10, "isShowSpeed": false, "isShowDirection": false, "isShowColor": true},
+  {"value": 2, "name": "Single Point On", "text": "lighting_icon2", "sort": 20, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 3, "name": "Single Point Off", "text": "lighting_icon3", "sort": 30, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 4, "name": "Starry Sky", "text": "lighting_icon4", "sort": 40, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 5, "name": "Snowfall", "text": "lighting_icon5", "sort": 50, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 6, "name": "Floral Competition", "text": "lighting_icon6", "sort": 60, "isShowSpeed": true, "isShowDirection": false, "isShowColor": false},
+  {"value": 7, "name": "Dynamic Breathing", "text": "lighting_icon7", "sort": 70, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 8, "name": "Spectrum Cycle", "text": "lighting_icon8", "sort": 80, "isShowSpeed": true, "isShowDirection": false, "isShowColor": false},
+  {"value": 9, "name": "Color Fountain", "text": "lighting_icon9", "sort": 90, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 10, "name": "Colorful Interchange", "text": "lighting_icon10", "sort": 100, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "top", "isShowColor": true},
+  {"value": 11, "name": "Flowing with the Waves", "text": "lighting_icon11", "sort": 110, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": true},
+  {"value": 12, "name": "Turning Peaks", "text": "lighting_icon12", "sort": 120, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": true},
+  {"value": 13, "name": "One Touch to Fire", "text": "lighting_icon13", "sort": 130, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 14, "name": "Two Birds with One Stone", "text": "lighting_icon14", "sort": 140, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 15, "name": "Ripples Spread", "text": "lighting_icon15", "sort": 150, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 16, "name": "Endless Flow", "text": "lighting_icon16", "sort": 160, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": true},
+  {"value": 17, "name": "Layered Mountains", "text": "lighting_icon17", "sort": 170, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 18, "name": "Gentle Rain and Wind", "text": "lighting_icon18", "sort": 180, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": true},
+  {"value": 19, "name": "Back and Forth", "text": "lighting_icon19", "sort": 190, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 128, "name": "Custom", "text": "lighting_icon20", "sort": 1280, "isShowSpeed": false, "isShowDirection": false, "isShowColor": true}
+ ],
+ "appended": [
+  {"value": 23, "name": "Rainbow Windmill", "text": "lighting_icon21", "sort": 230, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": false},
+  {"value": 24, "name": "Colorful gathering", "text": "lighting_icon22", "sort": 240, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 25, "name": "Neon shadows", "text": "lighting_icon23", "sort": 250, "isShowSpeed": true, "isShowDirection": true, "directionPosition": "left", "isShowColor": true},
+  {"value": 254, "name": "heartwarming moment", "text": "lighting_icon28", "sort": 260, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 26, "name": "tide of life", "text": "lighting_icon34", "sort": 270, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 27, "name": "silicone breathing", "text": "lighting_icon35", "sort": 280, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 28, "name": "Gradient Bright", "text": "lighting_icon37", "sort": 10, "isShowSpeed": false, "isShowDirection": false, "isShowColor": true},
+  {"value": 29, "name": "Monochrome Breathing", "text": "lighting_icon38", "sort": 30, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 30, "name": "Dynamic Bright", "text": "lighting_icon39", "sort": 40, "isShowSpeed": false, "isShowDirection": false, "isShowColor": true},
+  {"value": 31, "name": "Colorful Interchange 1", "text": "lighting_icon40", "sort": 100, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 32, "name": "RGB Dynamic Breathing", "text": "lighting_icon41", "sort": 70, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true},
+  {"value": 33, "name": "Colorful Interchange 2", "text": "lighting_icon42", "sort": 100, "isShowSpeed": true, "isShowDirection": false, "isShowColor": true}
+ ]
+}

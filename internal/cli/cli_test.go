@@ -3427,6 +3427,10 @@ func TestGetLightingHumanOutput(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Lighting Effect:",
+		// The effect mode and the direction render in the one spelling the
+		// TUI and the diffs use (protocol.LightingModeText / DirectionText).
+		"Mode:              11 Flowing with the Waves",
+		"Direction:         right",
 		"Primary color:     #ffffff",
 		"Secondary color:   #000000",
 		"Brightness:        6 (range 1-6)",

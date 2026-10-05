@@ -73,7 +73,7 @@ func (m *Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		fwd := msg.String() == "right"
 		switch m.sel {
 		case rowReportRate:
-			s.ReportRate = stepReportRate(s.ReportRate, m.session.Model.ReportRates, fwd)
+			s.ReportRate = stepValue(s.ReportRate, m.session.Model.ReportRates, fwd)
 		case rowKeyDelay:
 			s.KeyDelay = stepUint8(s.KeyDelay, protocol.KeyDelayMin, protocol.KeyDelayMax, fwd)
 		case rowSleep:
@@ -89,11 +89,12 @@ func (m *Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// stepReportRate cycles the Report Rate over the Model's offered set
-// (CONTEXT.md: the NUT87 offers 1K/4K/8K). A value outside the set — read
-// from a Device configured by other tools — steps in at an end; it is shown
-// as read until the user changes it.
-func stepReportRate(cur protocol.ReportRate, set []protocol.ReportRate, fwd bool) protocol.ReportRate {
+// stepValue steps a value over a set of offered values, wrapping — the
+// editors that change one of a Model's advertised sets (the Settings
+// screen's Report Rate, the Lighting screen's effect mode) share it. A
+// value outside the set — read from a Device configured by other tools —
+// steps in at an end; it is shown as read until the user changes it.
+func stepValue[T comparable](cur T, set []T, fwd bool) T {
 	if len(set) == 0 {
 		return cur
 	}
