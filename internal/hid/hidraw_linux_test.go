@@ -84,3 +84,74 @@ func TestMapOpenErrorHints(t *testing.T) {
 		t.Errorf("ENOENT mapped to %v, want ErrNotFound", err)
 	}
 }
+
+// TestLockExclusiveRefusesSecondHolder races two opens of one file for the
+// exclusive lock: the second must fail with ErrBusy. Closing the first
+// releases the lock implicitly, so the second can then take it.
+func TestLockExclusiveRefusesSecondHolder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hidraw3")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open := func() *os.File {
+		t.Helper()
+		f, err := os.OpenFile(path, os.O_RDWR, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	first := open()
+	second := open()
+	t.Cleanup(func() { first.Close(); second.Close() })
+
+	if err := lockExclusive(first); err != nil {
+		t.Fatalf("first lock = %v, want nil", err)
+	}
+	if err := lockExclusive(second); !errors.Is(err, ErrBusy) {
+		t.Errorf("second lock = %v, want ErrBusy", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first: %v", err)
+	}
+	if err := lockExclusive(second); err != nil {
+		t.Errorf("lock after close = %v, want nil", err)
+	}
+}
+
+// TestOpenRefusesBusyDeviceAndCloseIsIdempotent runs the real Open path
+// against a plain temp file standing in for a hidraw node: while another
+// handle holds the lock, Open must fail with ErrBusy; once released, Open
+// succeeds and Close may be called repeatedly.
+func TestOpenRefusesBusyDeviceAndCloseIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hidraw3")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lockExclusive(holder); err != nil {
+		t.Fatalf("lock holder: %v", err)
+	}
+
+	e := hidrawEnumerator{}
+	if _, err := e.Open(Info{Path: path, ReportLength: 32}); !errors.Is(err, ErrBusy) {
+		t.Errorf("Open while held = %v, want ErrBusy", err)
+	}
+	if err := holder.Close(); err != nil {
+		t.Fatalf("close holder: %v", err)
+	}
+
+	tr, err := e.Open(Info{Path: path, ReportLength: 32})
+	if err != nil {
+		t.Fatalf("Open after release: %v", err)
+	}
+	if err := tr.Close(); err != nil {
+		t.Errorf("first Close = %v, want nil", err)
+	}
+	if err := tr.Close(); err != nil {
+		t.Errorf("second Close = %v, want nil", err)
+	}
+}

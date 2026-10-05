@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "GET_KEY",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, /dev/hidraw10, firmware 1.20) via internal/protocol over the hidraw transport — docs/capture.md Method A; 64-byte reports; full-block read at the raw request/response level, request reports built exactly as protocol.Request.Marshal builds them",
+  "unverified": "check-code theory (unverified): the 00 00 AA 55 at bytes 508..511 of each keymap block is a block-tail check code in the same endianness/offset-detector role the vendor docs give 0xAA 0x55 — why the firmware writes it there is inferred, not proven. Note the recording contradicts the pre-2026-10 docs/protocol.md §4 claim that 0xAA 0x55 sits at GET_LED_EFFECT offsets 14..15: the LED effect's bytes 14..15 read 00 00 here and the AA 55 marker is observed at the keymap block tails. The out-of-layout Key Slots carrying default Key Actions (shared firmware matrix with sibling Models) are observed factory state on firmware 1.20; the claim that they are default bindings for keys the NUT87 does not physically have is inferred from the vendor bundle layout tables, not proven"
+}

@@ -195,3 +195,165 @@ func TestGarbageThenGoodResponseSucceeds(t *testing.T) {
 		t.Errorf("Version = %q, want 1.06", info.Version)
 	}
 }
+
+// assertSentMatch proves the request reports our chunker produced are the
+// ones the fixture's Device actually answered — byte-exact.
+func assertSentMatch(t *testing.T, fake *hidfake.Device, x fixture.Exchange) {
+	t.Helper()
+	sent := fake.Sent()
+	if len(sent) != len(x.Requests) {
+		t.Fatalf("sent %d request reports, want %d", len(sent), len(x.Requests))
+	}
+	for i := range sent {
+		if !bytes.Equal(sent[i], x.Requests[i]) {
+			t.Errorf("request report %d:\n got  %X\n want %X", i, sent[i], x.Requests[i])
+		}
+	}
+}
+
+func TestKeymapOverFakeDevice(t *testing.T) {
+	x := loadFixture(t, "get_key", "nut87")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	keymap, err := dev.Keymap(context.Background())
+	if err != nil {
+		t.Fatalf("Keymap: %v", err)
+	}
+	if want := (KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 41, 0}, Raw: [4]byte{2, 0, 41, 0}}); keymap[0] != want {
+		t.Errorf("slot 0 = %+v, want %+v (Esc = KEYBOARD keycode 41)", keymap[0], want)
+	}
+	if want := (KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x3B, 0}, Raw: [4]byte{2, 0, 0x3B, 0}}); keymap[2] != want {
+		t.Errorf("slot 2 = %+v, want %+v (F2)", keymap[2], want)
+	}
+	for slot, want := range map[int][4]byte{
+		13: {3, 0xE9, 0, 0}, // knob clockwise: Volume Up
+		14: {3, 0xEA, 0, 0}, // knob counter-clockwise: Volume Down
+		15: {3, 0xE2, 0, 0}, // knob press: Mute
+	} {
+		if keymap[slot].Type != ActionConsumer || keymap[slot].Raw != want {
+			t.Errorf("slot %d = %+v, want CONSUMER raw %X", slot, keymap[slot], want)
+		}
+	}
+	// Slot 29 is a firmware-matrix Key Slot (shared matrix with sibling
+	// boards): it carries a default KEYBOARD binding on every healthy Device.
+	if want := (KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x53, 0}, Raw: [4]byte{2, 0, 0x53, 0}}); keymap[29] != want {
+		t.Errorf("slot 29 = %+v, want %+v (firmware-matrix default binding)", keymap[29], want)
+	}
+	if keymap[112] != (KeyAction{}) {
+		t.Errorf("slot 112 = %+v, want DEFAULT", keymap[112])
+	}
+	// The block-tail marker 00 00 AA 55 lands in the last Key Slot's raw
+	// bytes (block bytes 508..511).
+	if want := (KeyAction{Type: ActionDefault, Params: [3]byte{0, 0xAA, 0x55}, Raw: [4]byte{0, 0, 0xAA, 0x55}}); keymap[127] != want {
+		t.Errorf("slot 127 = %+v, want %+v (block-tail marker)", keymap[127], want)
+	}
+	assertSentMatch(t, fake, x)
+}
+
+func TestFnKeymapOverFakeDevice(t *testing.T) {
+	x := loadFixture(t, "get_fn_key", "nut87")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	keymap, err := dev.FnKeymap(context.Background())
+	if err != nil {
+		t.Fatalf("FnKeymap: %v", err)
+	}
+	if want := (KeyAction{Type: ActionFunc, Params: [3]byte{0, 0, 1}, Raw: [4]byte{13, 0, 0, 1}}); keymap[0] != want {
+		t.Errorf("slot 0 = %+v, want %+v (FUNC id 1)", keymap[0], want)
+	}
+	if want := (KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x3B, 0}, Raw: [4]byte{2, 0, 0x3B, 0}}); keymap[2] != want {
+		t.Errorf("slot 2 = %+v, want %+v (F2)", keymap[2], want)
+	}
+	// Fn-disabled Key Slot 1 keeps its base binding on the Fn Layer: the
+	// firmware reports what it reports, the decoder never rewrites it.
+	if want := (KeyAction{Type: ActionKeyboard, Params: [3]byte{0, 0x3A, 0}, Raw: [4]byte{2, 0, 0x3A, 0}}); keymap[1] != want {
+		t.Errorf("slot 1 = %+v, want %+v (Fn-disabled F1 keeps its binding)", keymap[1], want)
+	}
+	assertSentMatch(t, fake, x)
+}
+
+func TestLightingEffectOverFakeDevice(t *testing.T) {
+	x := loadFixture(t, "get_led_effect", "nut87")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	effect, err := dev.LightingEffect(context.Background())
+	if err != nil {
+		t.Fatalf("LightingEffect: %v", err)
+	}
+	want := LightingEffect{
+		Mode:           11,
+		RGB:            [3]byte{0xFF, 0xFF, 0xFF},
+		DriverSetting:  0,
+		SecondaryRGB:   [3]byte{0, 0, 0},
+		ColorMode:      1,
+		Brightness:     6,
+		Speed:          3,
+		Direction:      0,
+		EffectModeType: 0,
+		// Factory/unwritten check code — the observed firmware-1.20 state.
+		CheckCode:   [2]byte{0, 0},
+		CheckCodeOK: true,
+	}
+	if effect != want {
+		t.Errorf("effect:\n got  %+v\n want %+v", effect, want)
+	}
+	assertSentMatch(t, fake, x)
+}
+
+func TestPerKeyRGBOverFakeDevice(t *testing.T) {
+	x := loadFixture(t, "get_custom_led_data", "nut87")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	rgb, err := dev.PerKeyRGB(context.Background())
+	if err != nil {
+		t.Fatalf("PerKeyRGB: %v", err)
+	}
+	// The recorded Device has no custom colors: every entry is zero except
+	// the last, where the 00 00 AA 55 block-tail marker lands in the entry's
+	// raw bytes (block bytes 508..511).
+	if want := (PerKeyLED{}); rgb[0] != want {
+		t.Errorf("entry 0 = %+v, want %+v (no custom color)", rgb[0], want)
+	}
+	if want := (PerKeyLED{}); rgb[13] != want {
+		t.Errorf("entry 13 = %+v, want %+v (no custom color)", rgb[13], want)
+	}
+	if want := (PerKeyLED{G: 0xAA, B: 0x55}); rgb[127] != want {
+		t.Errorf("entry 127 = %+v, want %+v (block-tail marker in the raw bytes)", rgb[127], want)
+	}
+	assertSentMatch(t, fake, x)
+}
+
+func TestKeymapMultiChunkReassemblyOverFakeDevice(t *testing.T) {
+	// The seed fixtures use 32-byte reports, so a 512-byte keymap read is
+	// 22 chunks. What comes back out of the reassembled chunks must be the
+	// seed fixture's own payload, byte for byte — the multi-chunk framing
+	// golden (its payload is synthesized, see its meta.json).
+	x := loadFixture(t, "get_key", "seed-32byte")
+	fake := newFake(t, x, func(f *hidfake.Device) { f.Replay(x) })
+	dev := newDevice(t, fake)
+
+	keymap, err := dev.Keymap(context.Background())
+	if err != nil {
+		t.Fatalf("Keymap: %v", err)
+	}
+	want, err := DecodeKeymap(reassemble(x.Responses, KeymapSize))
+	if err != nil {
+		t.Fatalf("DecodeKeymap: %v", err)
+	}
+	if keymap != want {
+		t.Errorf("reassembly differs from the fixture payload decode (e.g. slot 0: %+v vs %+v)", keymap[0], want[0])
+	}
+	// The seed payload still carries the unknown page-type marker at slot 2
+	// (2a 01 02 03): unknown markers survive multi-chunk reassembly.
+	if want := (KeyAction{Type: ActionUnknown, Params: [3]byte{1, 2, 3}, Raw: [4]byte{42, 1, 2, 3}}); keymap[2] != want {
+		t.Errorf("slot 2 = %+v, want %+v (unknown pageType 42 marker)", keymap[2], want)
+	}
+	if got := len(fake.Sent()); got != len(x.Requests) {
+		t.Errorf("sent %d request reports, want %d chunks", got, len(x.Requests))
+	}
+	assertSentMatch(t, fake, x)
+}

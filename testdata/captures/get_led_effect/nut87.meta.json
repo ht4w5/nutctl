@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "GET_LED_EFFECT",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, /dev/hidraw10, firmware 1.20) via internal/protocol over the hidraw transport — docs/capture.md Method A; 64-byte reports; full-block read at the raw request/response level, request reports built exactly as protocol.Request.Marshal builds them",
+  "unverified": "check-code theory (unverified): offsets 14..15 read 00 00 (the factory/unwritten state observed on firmware 1.20); 0xAA 0x55 there is believed to be written only by the vendor app's SET_LED_EFFECT path — unverified until ticket 03 records a SET_LED_EFFECT read-back (once written, read-back must show 0xAA 0x55). Contradicts the pre-2026-10 docs/protocol.md §4 claim that GET_LED_EFFECT carries 0xAA 0x55 at 14..15 out of the factory"
+}

@@ -1,0 +1,10 @@
+{
+  "case": "seed-32byte",
+  "cmd": "GET_LED_EFFECT",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.06",
+  "captureMethod": "synthesized",
+  "source": "synthesized from docs/protocol.md \u00a72 (chunked framing) and \u00a74 GET_LED_EFFECT (16-byte Lighting Effect block, check code 0xAA 0x55 at offsets 14..15); same payload as the nut87 case chunked into 32-byte reports as the multi-chunk framing/reassembly golden; request bytes built exactly as Request.Marshal; plausible NUT87 Lighting Effect state (brightness 4, speed 3 within the 1..6 ranges, check code present)",
+  "unverified": "synthesized, not recorded: Method A hardware recording is pending in ticket 09 (nutctl fixtures record); 32-byte reports follow the seed-32byte framing convention (the real Device reports 64-byte reports \u2014 see the get_device_info/get_game_mode nut87 cases)"
+}

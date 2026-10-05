@@ -62,11 +62,16 @@ func (hidrawEnumerator) Enumerate() ([]Info, error) {
 }
 
 // Open opens the hidraw device behind info and starts delivering input
-// reports.
+// reports. It takes the exclusive advisory lock first: a Device only has one
+// reader at a time (see lockExclusive).
 func (hidrawEnumerator) Open(info Info) (Transport, error) {
 	f, err := os.OpenFile(info.Path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", info.Path, mapOpenError(err))
+	}
+	if err := lockExclusive(f); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("%s: %w", info.Path, err)
 	}
 	t := &hidrawTransport{
 		file:      f,
@@ -99,6 +104,36 @@ type hidrawTransport struct {
 	reports   chan []byte
 	done      chan struct{}
 	closeOnce sync.Once
+	closeErr  error
+}
+
+// lockExclusive takes the exclusive advisory lock (flock) on f without
+// blocking, or fails with an error wrapping ErrBusy. flock locks belong to
+// the open file description, so a second Open of the same node — in this or
+// any other process — cannot take the lock while f holds it.
+//
+// The lock exists because the kernel hands each hidraw input report to
+// exactly one reader: two concurrent readers steal each other's chunks and
+// silently corrupt multi-chunk reads (measured on real hardware 2026-10-05:
+// 4/4 concurrent `nutctl get keymap` runs reassembled corrupted blocks, 0/8
+// sequential runs failed). Refusing the second Open turns that corruption
+// into an actionable error. The lock is released implicitly when the fd is
+// closed, so Close needs no unlock.
+func lockExclusive(f *os.File) error {
+	raw, err := f.SyscallConn()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrBusy, err)
+	}
+	var flockErr error
+	if err := raw.Control(func(fd uintptr) {
+		flockErr = syscall.Flock(int(fd), syscall.LOCK_EX|syscall.LOCK_NB)
+	}); err != nil {
+		return fmt.Errorf("%w: %v", ErrBusy, err)
+	}
+	if flockErr != nil {
+		return fmt.Errorf("%w: another process has the Device open (%v)", ErrBusy, flockErr)
+	}
+	return nil
 }
 
 func (t *hidrawTransport) ReportLength() int { return t.reportLen }
@@ -135,9 +170,14 @@ func (t *hidrawTransport) readLoop() {
 	}
 }
 
+// Close stops the read loop and closes the fd, which releases the exclusive
+// lock. It is idempotent: repeated calls return the first result.
 func (t *hidrawTransport) Close() error {
-	t.closeOnce.Do(func() { close(t.done) })
-	return t.file.Close()
+	t.closeOnce.Do(func() {
+		close(t.done)
+		t.closeErr = t.file.Close()
+	})
+	return t.closeErr
 }
 
 // parseUevent parses a kernel uevent file into its KEY=VALUE pairs.

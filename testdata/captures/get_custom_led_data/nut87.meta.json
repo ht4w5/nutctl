@@ -1,0 +1,10 @@
+{
+  "case": "nut87",
+  "cmd": "GET_CUSTOM_LED_DATA",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.20",
+  "captureMethod": "active-probing",
+  "source": "recorded 2026-10-05 from real hardware (USB 0c45:880c, interface usage page 0xFF68, /dev/hidraw10, firmware 1.20) via internal/protocol over the hidraw transport — docs/capture.md Method A; 64-byte reports; full-block read at the raw request/response level, request reports built exactly as protocol.Request.Marshal builds them",
+  "unverified": "tail observation: bytes 508..511 of the Per-Key RGB block read 00 00 aa 55 (bytes 510..511 carry the 0xAA 0x55 marker: true) — recorded either way; check-code theory (unverified): the 0xAA 0x55 block-tail marker role is inferred from the keymap blocks, not proven; LED-effect offsets 14..15 read 00 00 on this firmware (see get_led_effect/nut87.meta.json)"
+}

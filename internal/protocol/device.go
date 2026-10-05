@@ -277,6 +277,76 @@ func (d *Device) Settings(ctx context.Context) (Settings, error) {
 	return settings, nil
 }
 
+// Keymap reads the Base Layer Key Action table (GET_KEY): 128 Key Slots.
+func (d *Device) Keymap(ctx context.Context) (Keymap, error) {
+	responses, err := d.runTransfer(ctx, transferSpec{
+		cmd:                CmdGetKey,
+		contentSize:        KeymapSize,
+		needLastPacketFlag: true,
+	})
+	if err != nil {
+		return Keymap{}, fmt.Errorf("GET_KEY: %w", err)
+	}
+	keymap, err := DecodeKeymap(reassemble(responses, KeymapSize))
+	if err != nil {
+		return Keymap{}, fmt.Errorf("GET_KEY: %w", err)
+	}
+	return keymap, nil
+}
+
+// FnKeymap reads the Fn Layer Key Action table (GET_FN_KEY): 128 Key Slots.
+func (d *Device) FnKeymap(ctx context.Context) (Keymap, error) {
+	responses, err := d.runTransfer(ctx, transferSpec{
+		cmd:                CmdGetFnKey,
+		contentSize:        KeymapSize,
+		needLastPacketFlag: true,
+	})
+	if err != nil {
+		return Keymap{}, fmt.Errorf("GET_FN_KEY: %w", err)
+	}
+	keymap, err := DecodeKeymap(reassemble(responses, KeymapSize))
+	if err != nil {
+		return Keymap{}, fmt.Errorf("GET_FN_KEY: %w", err)
+	}
+	return keymap, nil
+}
+
+// LightingEffect reads the Lighting Effect block (GET_LED_EFFECT): 16 bytes.
+// The check code lands in CheckCodeOK; enforcing it is the self-check's job
+// (internal/device), not the codec's.
+func (d *Device) LightingEffect(ctx context.Context) (LightingEffect, error) {
+	responses, err := d.runTransfer(ctx, transferSpec{
+		cmd:                CmdGetLEDEffect,
+		contentSize:        LEDEffectSize,
+		needLastPacketFlag: true,
+	})
+	if err != nil {
+		return LightingEffect{}, fmt.Errorf("GET_LED_EFFECT: %w", err)
+	}
+	effect, err := DecodeLightingEffect(reassemble(responses, LEDEffectSize))
+	if err != nil {
+		return LightingEffect{}, fmt.Errorf("GET_LED_EFFECT: %w", err)
+	}
+	return effect, nil
+}
+
+// PerKeyRGB reads the Per-Key RGB table (GET_CUSTOM_LED_DATA): 128 entries.
+func (d *Device) PerKeyRGB(ctx context.Context) (PerKeyRGB, error) {
+	responses, err := d.runTransfer(ctx, transferSpec{
+		cmd:                CmdGetCustomLEDData,
+		contentSize:        PerKeyRGBSize,
+		needLastPacketFlag: true,
+	})
+	if err != nil {
+		return PerKeyRGB{}, fmt.Errorf("GET_CUSTOM_LED_DATA: %w", err)
+	}
+	rgb, err := DecodePerKeyRGB(reassemble(responses, PerKeyRGBSize))
+	if err != nil {
+		return PerKeyRGB{}, fmt.Errorf("GET_CUSTOM_LED_DATA: %w", err)
+	}
+	return rgb, nil
+}
+
 // reassemble concatenates the data of each response report and truncates to
 // size (docs/protocol.md §2).
 func reassemble(responses [][]byte, size int) []byte {

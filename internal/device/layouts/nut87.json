@@ -1,0 +1,582 @@
+{
+  "model": "NUT87",
+  "keys": [
+    {
+      "slot": 0,
+      "name": "Esc",
+      "keyCode": 41,
+      "code": "Escape"
+    },
+    {
+      "slot": 1,
+      "name": "F1",
+      "keyCode": 58,
+      "code": "F1"
+    },
+    {
+      "slot": 2,
+      "name": "F2",
+      "keyCode": 59,
+      "code": "F2"
+    },
+    {
+      "slot": 3,
+      "name": "F3",
+      "keyCode": 60,
+      "code": "F3"
+    },
+    {
+      "slot": 4,
+      "name": "F4",
+      "keyCode": 61,
+      "code": "F4"
+    },
+    {
+      "slot": 5,
+      "name": "F5",
+      "keyCode": 62,
+      "code": "F5"
+    },
+    {
+      "slot": 6,
+      "name": "F6",
+      "keyCode": 63,
+      "code": "F6"
+    },
+    {
+      "slot": 7,
+      "name": "F7",
+      "keyCode": 64,
+      "code": "F7"
+    },
+    {
+      "slot": 8,
+      "name": "F8",
+      "keyCode": 65,
+      "code": "F8"
+    },
+    {
+      "slot": 9,
+      "name": "F9",
+      "keyCode": 66,
+      "code": "F9"
+    },
+    {
+      "slot": 10,
+      "name": "F10",
+      "keyCode": 67,
+      "code": "F10"
+    },
+    {
+      "slot": 11,
+      "name": "F11",
+      "keyCode": 68,
+      "code": "F11"
+    },
+    {
+      "slot": 12,
+      "name": "F12",
+      "keyCode": 69,
+      "code": "F12"
+    },
+    {
+      "slot": 99,
+      "name": "Print",
+      "keyCode": 70,
+      "code": "PrintScreen"
+    },
+    {
+      "slot": 100,
+      "name": "Scroll",
+      "keyCode": 71,
+      "code": "ScrollLock"
+    },
+    {
+      "slot": 102,
+      "name": "Pause",
+      "keyCode": 72,
+      "code": "Pause"
+    },
+    {
+      "slot": 16,
+      "name": "` ~",
+      "keyCode": 53,
+      "code": "Backquote"
+    },
+    {
+      "slot": 17,
+      "name": "1 !",
+      "keyCode": 30,
+      "code": "Digit1"
+    },
+    {
+      "slot": 18,
+      "name": "2 @",
+      "keyCode": 31,
+      "code": "Digit2"
+    },
+    {
+      "slot": 19,
+      "name": "3 #",
+      "keyCode": 32,
+      "code": "Digit3"
+    },
+    {
+      "slot": 20,
+      "name": "4 $",
+      "keyCode": 33,
+      "code": "Digit4"
+    },
+    {
+      "slot": 21,
+      "name": "5 %",
+      "keyCode": 34,
+      "code": "Digit5"
+    },
+    {
+      "slot": 22,
+      "name": "6 ^",
+      "keyCode": 35,
+      "code": "Digit6"
+    },
+    {
+      "slot": 23,
+      "name": "7 &",
+      "keyCode": 36,
+      "code": "Digit7"
+    },
+    {
+      "slot": 24,
+      "name": "8 *",
+      "keyCode": 37,
+      "code": "Digit8"
+    },
+    {
+      "slot": 25,
+      "name": "9 (",
+      "keyCode": 38,
+      "code": "Digit9"
+    },
+    {
+      "slot": 26,
+      "name": "0 )",
+      "keyCode": 39,
+      "code": "Digit0"
+    },
+    {
+      "slot": 27,
+      "name": "ˉ -",
+      "keyCode": 45,
+      "code": "Minus"
+    },
+    {
+      "slot": 28,
+      "name": "= +",
+      "keyCode": 46,
+      "code": "Equal"
+    },
+    {
+      "slot": 92,
+      "name": "Backspace",
+      "keyCode": 42,
+      "code": "Backspace"
+    },
+    {
+      "slot": 103,
+      "name": "Ins",
+      "keyCode": 73,
+      "code": "Insert"
+    },
+    {
+      "slot": 104,
+      "name": "Home",
+      "keyCode": 74,
+      "code": "Home"
+    },
+    {
+      "slot": 105,
+      "name": "PgUp",
+      "keyCode": 75,
+      "code": "PageUp"
+    },
+    {
+      "slot": 32,
+      "name": "Tab",
+      "keyCode": 43,
+      "code": "Tab"
+    },
+    {
+      "slot": 33,
+      "name": "Q",
+      "keyCode": 20,
+      "code": "KeyQ"
+    },
+    {
+      "slot": 34,
+      "name": "W",
+      "keyCode": 26,
+      "code": "KeyW"
+    },
+    {
+      "slot": 35,
+      "name": "E",
+      "keyCode": 8,
+      "code": "KeyE"
+    },
+    {
+      "slot": 36,
+      "name": "R",
+      "keyCode": 21,
+      "code": "KeyR"
+    },
+    {
+      "slot": 37,
+      "name": "T",
+      "keyCode": 23,
+      "code": "KeyT"
+    },
+    {
+      "slot": 38,
+      "name": "Y",
+      "keyCode": 28,
+      "code": "KeyY"
+    },
+    {
+      "slot": 39,
+      "name": "U",
+      "keyCode": 24,
+      "code": "KeyU"
+    },
+    {
+      "slot": 40,
+      "name": "I",
+      "keyCode": 12,
+      "code": "KeyI"
+    },
+    {
+      "slot": 41,
+      "name": "O",
+      "keyCode": 18,
+      "code": "KeyO"
+    },
+    {
+      "slot": 42,
+      "name": "P",
+      "keyCode": 19,
+      "code": "KeyP"
+    },
+    {
+      "slot": 43,
+      "name": "[ {",
+      "keyCode": 47,
+      "code": "BracketLeft"
+    },
+    {
+      "slot": 44,
+      "name": "] }",
+      "keyCode": 48,
+      "code": "BracketRight"
+    },
+    {
+      "slot": 60,
+      "name": "\\ | ",
+      "keyCode": 49,
+      "code": "Backslash"
+    },
+    {
+      "slot": 106,
+      "name": "Del",
+      "keyCode": 76,
+      "code": "Delete"
+    },
+    {
+      "slot": 107,
+      "name": "End",
+      "keyCode": 77,
+      "code": "End"
+    },
+    {
+      "slot": 108,
+      "name": "PgDn",
+      "keyCode": 78,
+      "code": "PageDown"
+    },
+    {
+      "slot": 48,
+      "name": "Caps",
+      "keyCode": 57,
+      "code": "CapsLock"
+    },
+    {
+      "slot": 49,
+      "name": "A",
+      "keyCode": 4,
+      "code": "KeyA"
+    },
+    {
+      "slot": 50,
+      "name": "S",
+      "keyCode": 22,
+      "code": "KeyS"
+    },
+    {
+      "slot": 51,
+      "name": "D",
+      "keyCode": 7,
+      "code": "KeyD"
+    },
+    {
+      "slot": 52,
+      "name": "F",
+      "keyCode": 9,
+      "code": "KeyF"
+    },
+    {
+      "slot": 53,
+      "name": "G",
+      "keyCode": 10,
+      "code": "KeyG"
+    },
+    {
+      "slot": 54,
+      "name": "H",
+      "keyCode": 11,
+      "code": "KeyH"
+    },
+    {
+      "slot": 55,
+      "name": "J",
+      "keyCode": 13,
+      "code": "KeyJ"
+    },
+    {
+      "slot": 56,
+      "name": "K",
+      "keyCode": 14,
+      "code": "KeyK"
+    },
+    {
+      "slot": 57,
+      "name": "L",
+      "keyCode": 15,
+      "code": "KeyL"
+    },
+    {
+      "slot": 58,
+      "name": "; :",
+      "keyCode": 51,
+      "code": "Semicolon"
+    },
+    {
+      "slot": 59,
+      "name": "' \"",
+      "keyCode": 52,
+      "code": "Quote"
+    },
+    {
+      "slot": 76,
+      "name": "Enter",
+      "keyCode": 40,
+      "code": "Enter"
+    },
+    {
+      "slot": 64,
+      "name": "L-Shift",
+      "keyCode": 225,
+      "code": "ShiftLeft"
+    },
+    {
+      "slot": 65,
+      "name": "Z",
+      "keyCode": 29,
+      "code": "KeyZ"
+    },
+    {
+      "slot": 66,
+      "name": "X",
+      "keyCode": 27,
+      "code": "KeyX"
+    },
+    {
+      "slot": 67,
+      "name": "C",
+      "keyCode": 6,
+      "code": "KeyC"
+    },
+    {
+      "slot": 68,
+      "name": "V",
+      "keyCode": 25,
+      "code": "KeyV"
+    },
+    {
+      "slot": 69,
+      "name": "B",
+      "keyCode": 5,
+      "code": "KeyB"
+    },
+    {
+      "slot": 70,
+      "name": "N",
+      "keyCode": 17,
+      "code": "KeyN"
+    },
+    {
+      "slot": 71,
+      "name": "M",
+      "keyCode": 16,
+      "code": "KeyM"
+    },
+    {
+      "slot": 72,
+      "name": ", <",
+      "keyCode": 54,
+      "code": "Comma"
+    },
+    {
+      "slot": 73,
+      "name": ". >",
+      "keyCode": 55,
+      "code": "Period"
+    },
+    {
+      "slot": 74,
+      "name": "/ ?",
+      "keyCode": 56,
+      "code": "Slash"
+    },
+    {
+      "slot": 75,
+      "name": "R-Shift",
+      "keyCode": 229,
+      "code": "ShiftRight"
+    },
+    {
+      "slot": 90,
+      "name": "↑",
+      "keyCode": 82,
+      "code": "ArrowUp"
+    },
+    {
+      "slot": 80,
+      "name": "L-Ctrl",
+      "keyCode": 224,
+      "code": "ControlLeft"
+    },
+    {
+      "slot": 81,
+      "name": "L-Win",
+      "keyCode": 227,
+      "code": "MetaLeft"
+    },
+    {
+      "slot": 82,
+      "name": "L-Alt",
+      "keyCode": 226,
+      "code": "AltLeft"
+    },
+    {
+      "slot": 83,
+      "name": "Spacebar",
+      "keyCode": 44,
+      "code": "Space"
+    },
+    {
+      "slot": 84,
+      "name": "R-Alt",
+      "keyCode": 230,
+      "code": "AltRight"
+    },
+    {
+      "slot": 85,
+      "name": "Fn",
+      "keyCode": 175,
+      "code": "-1"
+    },
+    {
+      "slot": 86,
+      "name": "Menu",
+      "keyCode": 101,
+      "code": "ContextMenu"
+    },
+    {
+      "slot": 87,
+      "name": "R-Ctrl",
+      "keyCode": 228,
+      "code": "ControlRight"
+    },
+    {
+      "slot": 88,
+      "name": "←",
+      "keyCode": 80,
+      "code": "ArrowLeft"
+    },
+    {
+      "slot": 89,
+      "name": "↓",
+      "keyCode": 81,
+      "code": "ArrowDown"
+    },
+    {
+      "slot": 91,
+      "name": "→",
+      "keyCode": 79,
+      "code": "ArrowRight"
+    }
+  ],
+  "knob": [
+    {
+      "slot": 13,
+      "gesture": "clockwise",
+      "name": "Volume Up"
+    },
+    {
+      "slot": 15,
+      "gesture": "press",
+      "name": "Mute"
+    },
+    {
+      "slot": 14,
+      "gesture": "counter-clockwise",
+      "name": "Volume Down"
+    }
+  ],
+  "fnDisabledSlots": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "extraSlots": [
+    29,
+    30,
+    31,
+    45,
+    46,
+    47,
+    61,
+    62,
+    63,
+    77,
+    78,
+    79,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    101,
+    109,
+    110,
+    111
+  ]
+}

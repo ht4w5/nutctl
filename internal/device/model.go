@@ -121,11 +121,13 @@ func (e *WrongModelError) Error() string { return e.Message }
 
 // Verify cross-checks the firmware-reported identity against the identity the
 // transport enumerated (the self-check of docs/capture.md Method A: a
-// mismatch means the framing is wrong or the wire is not who it claims).
+// mismatch means the framing is wrong or the wire is not who it claims). Its
+// failure line is already a self-check failure line (selfCheckPrefix): callers
+// surface it verbatim, never re-prefix it.
 func Verify(usb Identity, reported Identity) error {
 	if usb.VendorID != reported.VendorID || usb.ProductID != reported.ProductID {
 		return fmt.Errorf(
-			"self-check failed: USB reports %s %q but the firmware reports %s — refusing to trust this session",
+			selfCheckPrefix+"USB reports %s %q but the firmware reports %s — refusing to trust this session",
 			usb.USBID(), usb.ProductName, reported.USBID())
 	}
 	return nil

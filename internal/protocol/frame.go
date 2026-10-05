@@ -15,14 +15,21 @@ const (
 
 // Command ids used by the v0 surface (docs/protocol.md §3).
 const (
-	CmdGetDeviceInfo byte = 16
-	CmdGetGameMode   byte = 17
+	CmdGetDeviceInfo    byte = 16
+	CmdGetGameMode      byte = 17
+	CmdGetKey           byte = 18
+	CmdGetLEDEffect     byte = 19
+	CmdGetCustomLEDData byte = 20
+	CmdGetFnKey         byte = 22
 )
 
 // Payload sizes of the v0 commands (docs/protocol.md §4).
 const (
 	DeviceInfoSize = 48
 	SettingsSize   = 56
+	KeymapSize     = 512 // 128 Key Slots × 4 bytes
+	LEDEffectSize  = 16
+	PerKeyRGBSize  = 512 // 128 entries × 4 bytes
 )
 
 // Request is one request chunk: the contents of a single output report.

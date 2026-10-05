@@ -1,0 +1,14 @@
+{
+  "model": "Demo60",
+  "keys": [
+    { "slot": 0, "name": "Esc", "keyCode": 41, "code": "Escape" },
+    { "slot": 4, "name": "A", "keyCode": 4, "code": "KeyA" },
+    { "slot": 9, "name": "Spacebar", "keyCode": 44, "code": "Space" }
+  ],
+  "knob": [
+    { "slot": 1, "gesture": "clockwise", "name": "Volume Up" },
+    { "slot": 2, "gesture": "press", "name": "Play/Pause" },
+    { "slot": 3, "gesture": "counter-clockwise", "name": "Volume Down" }
+  ],
+  "fnDisabledSlots": [4]
+}

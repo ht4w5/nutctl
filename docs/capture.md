@@ -13,10 +13,19 @@ with `nutctl`. Every response is self-validating:
 
 - `GET_DEVICE_INFO` must report the same vid/pid as `lsusb`, a plausible version,
   `firmwareStatus == 0`.
-- `GET_KEY`/`GET_FN_KEY` must decode to the physical NUT87 layout (87 keys + wheel
-  slots 13/14/15) — a layout mismatch instantly reveals a framing/off-by-one bug.
-- `GET_LED_EFFECT` check-code bytes must be `0xAA 0x55` at offsets 14..15 — an
-  accidental endianness/offset detector built into the protocol.
+- `GET_KEY`/`GET_FN_KEY` must decode to the NUT87 layout (87 physical keys + Knob
+  slots 13/14/15 + the 22 firmware-matrix Key Slots observed on firmware 1.20 —
+  default bindings for keys the Model has no physical key for). The layout check
+  is structural: every non-DEFAULT Key Action sits in a Key Slot the Model's
+  layout table knows (keys ∪ Knob ∪ firmware-matrix slots), and each keymap block
+  ends with the block-tail marker `00 00 AA 55` (bytes 510..511). Either symptom
+  instantly reveals a framing/off-by-one bug.
+- The check code `0xAA 0x55` sits at the block TAIL (`00 00 AA 55` at bytes
+  508..511 of the keymap blocks; the Per-Key RGB block has the same tail) — an
+  accidental endianness/offset detector built into the protocol. The Lighting
+  Effect's check code at offsets 14..15 tolerates the unwritten factory state
+  (`00 00`, the observed firmware-1.20 reading) as well as `0xAA 0x55` (written
+  by the vendor app's SET path); any other value is corruption.
 - Read-modify-write one harmless setting (e.g. brightness) and read back.
 
 This method needs **no vendor software at all** and is sufficient to ship v1
@@ -77,6 +86,15 @@ worth one attempt — capture in-browser is by far the least work:
 If it still doesn't work, drop it — Methods A+B fully replace it.
 
 ## Safety rules for any capture session
+
+**One reader at a time.** `nutctl` takes an exclusive lock on the hidraw node
+and refuses to open a Device another process already holds (a second `nutctl`
+session, the vendor app, a capture tool) with a `device busy` error. This is
+enforced because the kernel hands each hidraw input report to exactly one
+reader: concurrent readers steal each other's chunks and multi-chunk reads
+reassemble into corrupted blocks — measured on real hardware (2026-10-05):
+4/4 concurrent `nutctl get keymap` runs corrupted, 0/8 sequential runs
+failed.
 
 - Only reversible operations: lighting, one key remap, one setting bit.
 - Never touch OTA/flash commands (`0x50` `SET_FLASH_DOWNLOAD`, `0x80+` OTA_*), never

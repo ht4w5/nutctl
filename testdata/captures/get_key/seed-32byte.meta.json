@@ -1,0 +1,10 @@
+{
+  "case": "seed-32byte",
+  "cmd": "GET_KEY",
+  "model": "NUT87",
+  "connection": "USB",
+  "firmware": "1.06",
+  "captureMethod": "synthesized",
+  "source": "synthesized from docs/protocol.md \u00a72 (chunked framing) and \u00a74 GET_KEY / GET_FN_KEY (128 Key Slots \u00d7 4 bytes, pageType table); same payload as the nut87 case chunked into 32-byte reports as the multi-chunk framing/reassembly golden; request bytes built exactly as Request.Marshal; plausible NUT87 Base Layer state (Esc slot 0 = KEYBOARD keycode 41, knob slots 13/14/15 = Volume Up/Volume Down/Mute, number row 16..28, many slots DEFAULT; slot 2 holds unknown pageType 42 = 2A 01 02 03 for the unknown-marker case)",
+  "unverified": "synthesized, not recorded: Method A hardware recording is pending in ticket 09 (nutctl fixtures record); 32-byte reports follow the seed-32byte framing convention (the real Device reports 64-byte reports \u2014 see the get_device_info/get_game_mode nut87 cases)"
+}

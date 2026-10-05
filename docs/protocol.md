@@ -202,20 +202,53 @@ Encoding per page (`lo()` writer / `Bn()` reader):
 Key slots are laid out against the model's `keyList` (NUT87: 87 keys, ids 0..108 with
 gaps; wheel keys occupy slots 13/14/15 = vol+/mute/vol−).
 
+**(observed 2026-10-05)** a real NUT87 (firmware 1.20, recorded in
+`testdata/captures/get_key/` + `get_fn_key/`) fills far more than the physical
+layout: **22 out-of-layout Key Slots — 29, 30, 31, 45, 46, 47, 61, 62, 63,
+77, 78, 79, 93, 94, 95, 96, 97, 98, 101, 109, 110, 111 (the layout's "gaps"
+plus 109–111) — carry real default Key Actions on BOTH Layers** (e.g. slot 29
+= `02 00 53 00`, 30 = `02 00 54 00`, 31 = `02 00 55 00` (keypad cluster
+0x53–0x55), 101 = `02 00 e7 00`, 109 = `02 00 56 00`, 110 = `02 00 57 00`,
+111 = `02 00 00 00`; slot 96 = `03 92 01 00` CONSUMER). This is a shared
+firmware matrix with sibling Models — default bindings for keys the NUT87
+does not physically have — so these Key Slots are normal state, not
+corruption. PageType histograms of the recording: base `pt0:16 pt2:108 pt3:4`,
+Fn `pt0:16 pt2:82 pt3:4 pt13:26`.
+
+**(observed 2026-10-05)** each 512-byte keymap block ends with the marker
+`00 00 AA 55` — bytes 510..511 are `0xAA 0x55`. See GET_LED_EFFECT below: the
+`0xAA 0x55` marker sits at the block TAIL, not at the Lighting Effect's
+offsets 14..15.
+
 ### GET_LED_EFFECT / SET_LED_EFFECT — 16 bytes
 
 ```
 0 mode   1..3 rgb   4 driverSetting (0xFF on write)   5..7 secondary rgb
 8 colorMode   9 brightness   10 speed   11 direction   12 effectModeType
-13 -    14..15 check code: 0xAA 0x55
+13 -    14..15 check code: 0xAA 0x55 (SET path only — see observed reality below)
 ```
 
 NUT87 ranges: brightness 1..6, speed 1..6, custom effects `[23,24,25]`.
+
+**(observed 2026-10-05)** on a real NUT87 (firmware 1.20, recorded in
+`testdata/captures/get_led_effect/`) offsets 14..15 read `00 00`, **not**
+`0xAA 0x55` — the claim that GET_LED_EFFECT carries the check code there is
+falsified by hardware. The `0xAA 0x55` marker was observed at the block TAIL
+instead: bytes 510..511 of both keymap blocks read `AA 55` (whole tail
+`00 00 AA 55`, slot 127 raw = `00 00 aa 55`), and the Per-Key RGB block has
+the same tail. Working theory (unverified, see §6.8): `0xAA 0x55` at the
+Lighting Effect's offsets 14..15 is written only by the vendor app's
+SET_LED_EFFECT path, `00 00` is the factory/unwritten state.
 
 ### GET_CUSTOM_LED_DATA / SET_CUSTOM_LED_DATA — 512 bytes
 
 128 entries × 4 bytes: `ledId, red, green, blue`. On SET the app writes
 `b0 = index` as the ledId. (Index ↔ key mapping is the model's LED id order.)
+
+**(observed 2026-10-05)** the recorded factory block (firmware 1.20,
+`testdata/captures/get_custom_led_data/`) is all zeroes except the same tail
+marker as the keymap blocks: bytes 508..511 = `00 00 AA 55` (so the last
+entry's raw bytes carry `AA 55` at 510..511).
 
 ### Key action semantics (`param1..3` per pageType)
 
@@ -288,7 +321,17 @@ NUT87 ranges: brightness 1..6, speed 1..6, custom effects `[23,24,25]`.
    — **closed for the v0 read path**: `GET_DEVICE_INFO`/`GET_GAME_MODE` succeed without
    them on firmware 1.20 (active probing 2026-10, `testdata/captures/`). Whether any
    SET command needs them stays open until the write path is recorded.
+8. **Check codes: the documented location was falsified (observed 2026-10-05,
+   real NUT87, firmware 1.20, `testdata/captures/`).** The bundle puts
+   `0xAA 0x55` at GET_LED_EFFECT offsets 14..15; hardware reads `00 00` there
+   (factory/unwritten) and shows the `0xAA 0x55` marker at the block TAIL
+   instead (`00 00 AA 55` at bytes 508..511 of GET_KEY, GET_FN_KEY **and**
+   GET_CUSTOM_LED_DATA). Open question — the SET path's check codes: does
+   SET_LED_EFFECT write `0xAA 0x55` at offsets 14..15, so a read-back after a
+   write shows it? If yes, the pair doubles as a "written" flag; if read-back
+   still shows `00 00`, the claim describes the SET wire format only. Closes
+   with the write path's SET_LED_EFFECT read-back capture (ticket 03).
 
 Everything needed for the v1 feature set (keymap, Fn layer, lighting effect + per-key
-RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–7 only
+RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–8 only
 affect extras or cross-checking.

@@ -19,7 +19,7 @@ func TestIdentifyNUT87(t *testing.T) {
 }
 
 func TestIdentifyNUT75IsRefused(t *testing.T) {
-	// A sibling board sharing the USB product id must be identified for what
+	// A sibling Model sharing the USB product id must be identified for what
 	// it is and refused with a clear wrong-Model error.
 	m, err := Identify(Identity{VendorID: 0x0C45, ProductID: 0x880C, ProductName: "NUT75"})
 	if err != nil {
