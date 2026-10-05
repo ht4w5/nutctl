@@ -28,9 +28,10 @@ func nut87Identity() Identity {
 	}
 }
 
-// tailMarker is the Key Slot 127 entry of a well-aligned keymap block: block
-// bytes 508..511 read 00 00 AA 55, so the 0xAA 0x55 block-tail marker lands
-// in the last Key Slot's raw bytes.
+// tailMarker is the Key Slot 127 entry of a flashed/written keymap block:
+// block bytes 508..511 read 00 00 AA 55, so the 0xAA 0x55 block-tail bytes
+// land in the last Key Slot's raw bytes. A factory-reset block reads 00 00
+// there instead (a zero Key Action) — also healthy (ticket 12).
 func tailMarker() protocol.KeyAction {
 	return protocol.KeyAction{
 		Type:   protocol.ActionDefault,
@@ -91,7 +92,7 @@ func TestRunChecks(t *testing.T) {
 	const (
 		verifyLine = `self-check failed: USB reports 0c45:880c "NUT87" but the firmware reports 0c45:9999 — refusing to trust this session`
 		layoutLine = `self-check failed: keymap does not decode to the NUT87 layout: Key Actions sit in %s, but no physical key, Knob gesture, or firmware-matrix slot sits there — the read is misaligned or the block is corrupt`
-		tailLine   = `self-check failed: keymap block misalignment: %s, want 0xAA 0x55 (the block-tail marker of a well-aligned read) — the read is misaligned or the block is corrupt`
+		tailLine   = `self-check failed: keymap block misalignment: %s, want 0xAA 0x55 (a flashed or written block tail) or 0x00 0x00 (factory/reset state) — the read is misaligned or the block is corrupt`
 		lightLine  = `self-check failed: lighting check code is %s at offsets 14..15, want 0xAA 0x55 (written by the vendor app's SET path) or 0x00 0x00 (factory/unwritten) — the read is misaligned or the block is corrupt`
 		nut75Line  = `self-check failed: wrong Model: this is a NUT75 (USB 0c45:880c "NUT75"); this build only supports NUT87 — refusing to configure`
 		nut75Table = `self-check failed: no layout table for Model "NUT75": missing data file internal/device/layouts/nut75.json — a Model's layout table is data; add the file to add the Model`
@@ -232,28 +233,43 @@ func TestRunChecks(t *testing.T) {
 			want: []string{formatLine(layoutLine, "base layer Key Slots 112, 120; fn layer Key Slot 121")},
 		},
 		{
-			// The block-tail marker (bytes 508..511 = 00 00 AA 55) is the
-			// misalignment detector: a framing bug shifts the tail away.
-			name:  "check 2 alone: base keymap block tail is not the marker",
+			// The block-tail bytes (510..511 of each block) are the
+			// misalignment detector: a framing bug shifts them away from
+			// BOTH recognized states (0xAA 0x55 flashed/written, 0x00 0x00
+			// factory/reset).
+			name:  "check 2 alone: base keymap block tail is neither recognized state",
+			model: NUT87,
+			in: func() CheckInput {
+				in := passingInput()
+				in.Base[127] = protocol.KeyAction{Raw: [4]byte{0, 0, 0x12, 0x34}}
+				return in
+			},
+			want: []string{formatLine(tailLine, "GET_KEY bytes 510..511 are 0x12 0x34")},
+		},
+		{
+			// The factory/reset tail state (0x00 0x00 after SET_FACTORY_RESET)
+			// is healthy — the state the post-reset fixtures record.
+			name:  "check 2 accepts the factory/reset block tail",
 			model: NUT87,
 			in: func() CheckInput {
 				in := passingInput()
 				in.Base[127] = protocol.KeyAction{}
+				in.Fn[127] = protocol.KeyAction{}
 				return in
 			},
-			want: []string{formatLine(tailLine, "GET_KEY bytes 510..511 are 0x00 0x00")},
+			want: nil,
 		},
 		{
 			name:  "check 2 alone: both block tails misaligned, one line naming both",
 			model: NUT87,
 			in: func() CheckInput {
 				in := passingInput()
-				in.Base[127] = protocol.KeyAction{}
+				in.Base[127] = protocol.KeyAction{Raw: [4]byte{0, 0, 0x56, 0x78}}
 				in.Fn[127] = protocol.KeyAction{Raw: [4]byte{0, 0, 0x12, 0x34}}
 				return in
 			},
 			want: []string{formatLine(tailLine,
-				"GET_KEY bytes 510..511 are 0x00 0x00; GET_FN_KEY bytes 510..511 are 0x12 0x34")},
+				"GET_KEY bytes 510..511 are 0x56 0x78; GET_FN_KEY bytes 510..511 are 0x12 0x34")},
 		},
 		{
 			name:  "check 2: binding out of place and tail misaligned are both named",
@@ -261,12 +277,12 @@ func TestRunChecks(t *testing.T) {
 			in: func() CheckInput {
 				in := passingInput()
 				in.Base[120] = keyboardAction(5)
-				in.Base[127] = protocol.KeyAction{}
+				in.Base[127] = protocol.KeyAction{Raw: [4]byte{0, 0, 0x12, 0x34}}
 				return in
 			},
 			want: []string{
 				formatLine(layoutLine, "base layer Key Slot 120"),
-				formatLine(tailLine, "GET_KEY bytes 510..511 are 0x00 0x00"),
+				formatLine(tailLine, "GET_KEY bytes 510..511 are 0x12 0x34"),
 			},
 		},
 		{
@@ -411,6 +427,24 @@ func TestRunChecksPassesOnRealRecordedFixtures(t *testing.T) {
 	}
 	if err := RunChecks(NUT87, in); err != nil {
 		t.Fatalf("RunChecks on the recorded fixtures = %v, want nil (a healthy Device must pass)", err)
+	}
+}
+
+// The post-reset regression guard (ticket 12): a Device factory-reset with
+// SET_FACTORY_RESET reads 0x00 0x00 at the block tails (recorded from real
+// hardware 2026-10-06, testdata/captures/*/nut87_post_reset) — healthy
+// state, and the checks must pass on it.
+func TestRunChecksAcceptsThePostResetState(t *testing.T) {
+	const dir = "../../testdata/captures"
+	in := CheckInput{
+		USB:      nut87Identity(),
+		Reported: nut87Identity(),
+		Base:     loadKeymapFixture(t, dir+"/get_key", "nut87_post_reset"),
+		Fn:       loadKeymapFixture(t, dir+"/get_fn_key", "nut87_post_reset"),
+		Lighting: loadLightingFixture(t, dir+"/get_led_effect", "nut87_post_reset"),
+	}
+	if err := RunChecks(NUT87, in); err != nil {
+		t.Fatalf("RunChecks on the post-reset fixtures = %v, want nil (a freshly reset Device is healthy)", err)
 	}
 }
 

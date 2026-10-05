@@ -157,6 +157,46 @@ func TestResetRefusesBootloaderDevice(t *testing.T) {
 	}
 }
 
+// postResetPathFixtures are the read-path exchanges of a Device minutes
+// after `nutctl reset` (recorded from real hardware, 2026-10-06 — the
+// factory-reset state whose block tails read 0x00 0x00, docs/protocol.md
+// §6.8).
+func postResetPathFixtures(t *testing.T) []fixture.Exchange {
+	t.Helper()
+	return []fixture.Exchange{
+		loadFixture(t, "get_device_info", "nut87_post_reset"),
+		loadFixture(t, "get_key", "nut87_post_reset"),
+		loadFixture(t, "get_fn_key", "nut87_post_reset"),
+		loadFixture(t, "get_led_effect", "nut87_post_reset"),
+		loadFixture(t, "get_custom_led_data", "nut87_post_reset"),
+		loadFixture(t, "get_game_mode", "nut87_post_reset"),
+	}
+}
+
+// A freshly factory-reset Device is a HEALTHY Device (the reset aftermath,
+// ticket 12): the reset clears the block-tail bytes to 0x00 0x00 —
+// legitimate state, recorded from real hardware — and the self-checks must
+// accept it. Rejecting it made get/save/load refuse the very Device the
+// reset was meant to recover.
+func TestReadsWorkOnAFreshlyResetDevice(t *testing.T) {
+	d := newNut87Fake(t, "/dev/hidraw3")
+	for _, x := range postResetPathFixtures(t) {
+		d.Replay(x)
+	}
+	enum := &hidfake.Enumerator{Devices: []*hidfake.Device{d}}
+
+	code, out, errOut := run(t, enum, "get", "settings")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 — a freshly reset Device must be readable (stderr: %s)", code, errOut)
+	}
+	if strings.Contains(errOut, "self-check failed") {
+		t.Errorf("self-checks rejected the factory-reset state:\n%s", errOut)
+	}
+	if !strings.Contains(out, "Report rate") {
+		t.Errorf("stdout missing the requested view:\n%s", out)
+	}
+}
+
 // The typed confirmation names the scope being destroyed (spec user story
 // 27): the prompt says what dies and demands the scope word back; anything
 // else — including a bare Enter — refuses without sending anything.

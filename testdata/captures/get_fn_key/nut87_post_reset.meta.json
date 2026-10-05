@@ -1,0 +1,10 @@
+{
+  "captureMethod": "active-probing",
+  "case": "nut87_post_reset",
+  "cmd": "GET_FN_KEY",
+  "connection": "USB",
+  "firmware": "1.20",
+  "model": "NUT87",
+  "source": "recorded 2026-10-06 from real hardware (USB 0c45:880c, interface usage page 0xFF68, firmware 1.20) via internal/protocol over the hidraw transport — docs/capture.md Method A; the read path of a Device factory-reset with nutctl reset (SET_FACTORY_RESET) minutes earlier; read-only capture",
+  "unverified": "what the factory reset does to the block-tail 00 00 AA 55 bytes is observed (it clears them) but unexplained: whether they are a written flag or Key Slot 127 factory data is not proven"
+}

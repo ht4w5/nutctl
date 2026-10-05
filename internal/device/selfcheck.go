@@ -164,20 +164,33 @@ func checkLayout(model Model, in CheckInput) error {
 			model.Name, strings.Join(details, "; ")))
 	}
 
-	// (b) the block-tail marker: bytes 510..511 of each keymap block.
+	// (b) the block-tail bytes: 510..511 of each keymap block. TWO states are
+	// observed on firmware 1.20 and both are healthy: 0xAA 0x55 (what a
+	// shipped/flashed block reads — the bytes survive SET writes byte for
+	// byte) and 0x00 0x00 (what a block reads after SET_FACTORY_RESET: the
+	// factory reset clears them — observed 2026-10-06 on real hardware
+	// minutes after `nutctl reset`, whole tail 508..511 = 00 00 00 00 while
+	// the keymap contents were exactly the factory default matrix,
+	// testdata/captures/*/nut87_post_reset). Anything else is corruption or
+	// misalignment: the bytes are an accidental endianness/offset detector
+	// (docs/protocol.md §6.8), and a framing bug shifts them away from both
+	// recognized states. Treating 0x00 0x00 as corruption was falsified by
+	// hardware — it made every read refuse a freshly reset Device.
 	var tails []string
 	for _, block := range []struct {
 		name   string
 		keymap protocol.Keymap
 	}{{"GET_KEY", in.Base}, {"GET_FN_KEY", in.Fn}} {
 		tail := block.keymap[127].Raw // block bytes 508..511
-		if tail[2] != protocol.CheckCodeByte0 || tail[3] != protocol.CheckCodeByte1 {
+		written := tail[2] == protocol.CheckCodeByte0 && tail[3] == protocol.CheckCodeByte1
+		reset := tail[2] == 0 && tail[3] == 0
+		if !written && !reset {
 			tails = append(tails, fmt.Sprintf("%s bytes 510..511 are 0x%02X 0x%02X", block.name, tail[2], tail[3]))
 		}
 	}
 	if len(tails) > 0 {
 		failures = append(failures, failf(
-			"keymap block misalignment: %s, want 0x%X 0x%X (the block-tail marker of a well-aligned read) — the read is misaligned or the block is corrupt",
+			"keymap block misalignment: %s, want 0x%X 0x%X (a flashed or written block tail) or 0x00 0x00 (factory/reset state) — the read is misaligned or the block is corrupt",
 			strings.Join(tails, "; "), protocol.CheckCodeByte0, protocol.CheckCodeByte1))
 	}
 	return errors.Join(failures...)

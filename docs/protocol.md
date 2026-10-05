@@ -244,6 +244,15 @@ Fn `pt0:16 pt2:82 pt3:4 pt13:26`.
 `0xAA 0x55` marker sits at the block TAIL, not at the Lighting Effect's
 offsets 14..15.
 
+**(observed 2026-10-06, after `nutctl reset`)** the factory reset CLEARS
+those tail bytes: GET_KEY / GET_FN_KEY / GET_CUSTOM_LED_DATA read
+`00 00 00 00` at 508..511 while the keymap contents are exactly the default
+matrix above (recorded: `testdata/captures/*/nut87_post_reset`; the LED
+Effect's check code and driverSetting return to `00 00` / `00` too). Both
+tail states are healthy Device states — what the bytes mean (a written flag
+vs Key Slot 127 factory data) is unproven — and the self-check accepts both
+(§6.8).
+
 ### GET_LED_EFFECT / SET_LED_EFFECT — 16 bytes
 
 ```
@@ -476,6 +485,19 @@ terminal can never block the wire.
    byte, and SET_CUSTOM_LED_DATA's forced `ledId = index` sticks (entry *i* reads back
    ledId *i*, factory blocks read `0` everywhere). Each of the five SET blocks was
    written back and read back **byte-for-byte identical**.
+
+   **(observed 2026-10-06, ticket 12, real NUT87 firmware 1.20 minutes after
+   `nutctl reset`)** the factory reset clears the block-tail `AA 55` bytes:
+   all three blocks read `00 00 00 00` at 508..511, and the LED Effect
+   returns to its factory/unwritten markers (check code `00 00`,
+   driverSetting `00`) — while the keymap contents are exactly the §4 default
+   matrix (127 of 128 slots byte-identical to the pre-reset recording; only
+   slot 127's tail bytes differ, stable across repeated reads). The tail pair
+   is therefore a two-state detector like the LED check code: `0xAA 0x55`
+   (flashed/written) or `0x00 0x00` (factory/reset) — both healthy, anything
+   else is misalignment. Treating `00 00` as corruption was falsified by this
+   Device: it made every read refuse a freshly reset keyboard (self-check 2
+   recalibrated accordingly, ticket 12).
 
 Everything needed for the v1 feature set (keymap, Fn layer, lighting effect + per-key
 RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–8 only
