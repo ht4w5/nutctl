@@ -302,8 +302,9 @@ Edit pane, `decoded/lightingPane-DBmdx-GA.js` — both fetched 2026-10-05 from
 `0xAA 0x55` — the claim that GET_LED_EFFECT carries the check code there is
 falsified by hardware. The `0xAA 0x55` marker was observed at the block TAIL
 instead: bytes 510..511 of both keymap blocks read `AA 55` (whole tail
-`00 00 AA 55`, slot 127 raw = `00 00 aa 55`), and the Per-Key RGB block has
-the same tail. **Verified 2026-10-05 (§6.8, ticket 03 write path):** the SET
+`00 00 AA 55`, slot 127 raw = `00 00 aa 55`), and the Per-Key RGB block
+carries the same pair at 510..511 (bytes 508..509 are entry 127 data — see
+§7, refinement 2). **Verified 2026-10-05 (§6.8, ticket 03 write path):** the SET
 format's `0xAA 0x55` at offsets 14..15 is a "written" flag — after
 SET_LED_EFFECT the Device reads `AA 55` there (and `0xFF` at offset 4)
 forever after, factory/unwritten reads `00 00`.
@@ -481,9 +482,11 @@ terminal can never block the wire.
    GET_CUSTOM_LED_DATA). The SET path's answer, by experiment: **SET_LED_EFFECT writes
    `0xAA 0x55` at offsets 14..15 and the Device reports it back on every later read —
    the pair doubles as a "written" flag** (offset 4 reads back `0xFF` the same way).
-   The block-tail marker survives SET_KEY/SET_FN_KEY/SET_CUSTOM_LED_DATA byte for
-   byte, and SET_CUSTOM_LED_DATA's forced `ledId = index` sticks (entry *i* reads back
-   ledId *i*, factory blocks read `0` everywhere). Each of the five SET blocks was
+   The block-tail marker survives SET_KEY/SET_FN_KEY byte for byte; on
+   SET_CUSTOM_LED_DATA only the `AA 55` pair does (the ledId byte is forced to
+   the entry index — §7 refinement 2). SET_CUSTOM_LED_DATA's forced
+   `ledId = index` sticks (entry *i* reads back ledId *i*, factory blocks read
+   `0` everywhere). Each of the five SET blocks was
    written back and read back **byte-for-byte identical**.
 
    **(observed 2026-10-06, ticket 12, real NUT87 firmware 1.20 minutes after
@@ -502,3 +505,80 @@ terminal can never block the wire.
 Everything needed for the v1 feature set (keymap, Fn layer, lighting effect + per-key
 RGB, macros, settings, factory reset) is answered by §2–§4 above; items 2, 4–8 only
 affect extras or cross-checking.
+
+## 7. Reconciliation against the recorded corpus (ticket 09)
+
+These notes were reconciled against recorded reality: every §2/§4 claim below was
+checked against the committed corpus — `testdata/captures/`, 23 exchanges: the
+`nut87` read and write fixtures (2026-10-05, real NUT87 `0c45:880c`, firmware 1.20,
+64-byte reports), the `nut87_post_reset` reads (2026-10-06, minutes after a factory
+reset) and the synthesized `seed-32byte` framing goldens (32-byte reports).
+
+The reconciliation is kept honest by tests, not by this section alone:
+
+- `internal/protocol/corpus_test.go` requires the corpus to cover **every command
+  the v0 read and write paths put on the wire** (the identity probe + the five
+  blocks and their five SET counterparts), and every committed exchange to follow
+  the §2 framing: request/response headers parse, the response mirrors its request
+  chunk's `lenOrType` and `addr`, one transfer carries exactly one complete block
+  (§4 sizes), and a SET ack echoes the chunk payload it was sent. A fixture that
+  disagrees with these notes fails the suite and names itself.
+- `internal/fixture` pins the corpus format round-trip (Save ⇄ Load) over every
+  committed fixture.
+- New recordings go in through `nutctl fixtures record` (docs/capture.md Method A),
+  which stores the wire bytes plus the provenance metadata (firmware version,
+  connection type, capture method) — probing and corpus building are one activity.
+
+### Confirmed by the recordings
+
+| claim | evidence |
+|---|---|
+| response header mirrors the request chunk (`lenOrType`, `addr`) | all 23 exchanges, pinned per report by `TestCorpusFollowsFraming` |
+| chunk payload = `reportLen - 8` (24 at 32-byte reports, 56 at 64-byte); reassembly concatenates `response[8:]`, truncated to the block size | `get_key/seed-32byte` (22 × 24 B) vs `get_key/nut87` (10 chunks: 9 × 56 B + 8 B) — both reassemble to 512 bytes |
+| GET_DEVICE_INFO field map (§4) decodes to the lsusb identity | `get_device_info/nut87`: `vid 0x0c45`, `pid 0x880c`, version bytes `20 01` → 1.20, `firmwareStatus 0` — self-validating per docs/capture.md Method A |
+| Settings block (§4): `reportRate` wire enum | `get_game_mode/nut87` raw `00 00 00 05 03 06 …` → `reportRate 6` = 8K (what `nutctl info` reports), `sleepTime 5`, `keyDelay 3` |
+| SET_LED_EFFECT forces byte 4 `0xFF` and `0xAA 0x55` at offsets 14..15; reads before the first write carry the factory `00` / `00 00` | `set_led_effect/nut87` request payload `0B FF FF FF FF 00 00 00 01 06 03 00 00 00 AA 55` vs `get_led_effect/nut87` `0B FF FF FF 00 00 00 00 01 06 03 00 00 00 00 00` |
+| SET_KEY / SET_FN_KEY write the block raw (decode preserves wire bytes) | `set_key/nut87` and `set_fn_key/nut87` carry the read blocks byte for byte, entry 127 raw `00 00 AA 55` included |
+| SET_CUSTOM_LED_DATA forces `ledId = entry index` | `set_custom_led_data/nut87` writes `7E 00 00 00 7F 00 …` at 504..511 where the factory read (`get_custom_led_data/nut87`) is all zeroes |
+| one transfer per complete block | request chunk lengths sum to the §4 block size in every exchange |
+
+### Discrepancies and refinements (with the evidence)
+
+1. **Report size (already §6.5).** §2's headings say "one 32-byte report per chunk"
+   and "payload … up to `reportLen-8` = 24 bytes" — the wired NUT87 speaks
+   **64-byte** reports and 56-byte chunk payloads (the `nut87` fixtures throughout).
+   The rule is `reportLen - 8`; 24 is the 32-byte case (the `seed-32byte` fixtures).
+   §6.5 carries the finding; this is the pointer from §2.
+2. **The Per-Key RGB block tail is NOT the same as the keymap tail** — this refines
+   "the Per-Key RGB block has the same tail" (§4) and "the keymap/Per-Key block tail
+   `00 00 AA 55` survives writes byte for byte" (§6.8). The stable marker is the
+   **pair `AA 55` at bytes 510..511** of all three blocks — exactly what the
+   self-check looks at. Bytes 508..509 are block data and move under the write
+   path's forced markers: `get_custom_led_data/nut87` reads `00 00 AA 55` at
+   508..511 (factory), but `set_custom_led_data/nut87` writes `7F 00 AA 55` there —
+   entry 127's `ledId` forced to the entry index 127 (red stays `00`). The keymap
+   blocks do round-trip `00 00 AA 55` byte for byte: `set_key/nut87` and
+   `set_fn_key/nut87` write exactly what the reads report (entry 127's raw is
+   authoritative).
+3. **The SET ack echoes the chunk payload — and nothing more.** §2 says the NUT87's
+   ack "echoes the written block back"; true for the `len` bytes each chunk claims
+   (pinned per chunk by `TestCorpusFollowsFraming`), but the **bytes past the chunk
+   length in an ack are the Device's own and are not echoes**: `set_key/nut87`'s
+   final ack (chunk len 8) reads `00 00 00 00 00 00 AA 55` followed by
+   `02 00 3D 00 …` where the request padded zeroes, and
+   `set_custom_led_data/nut87`'s final ack continues `04 00 00 00 05 …` after
+   `7E 00 00 00 7F 00 AA 55`. Anything compared as state must stay inside the
+   chunk length (the `set_*` fixture metas say the same).
+4. **GET_LED_EFFECT's check code at offsets 14..15 (§4 layout) is falsified by
+   hardware** — §6.8 carries the full story. The `seed-32byte` fixtures still encode
+   the pre-hardware claim (`AA 55` at 14..15) deliberately: they are the synthesized
+   framing goldens and their meta marks it. Recorded reality:
+   `get_led_effect/nut87` and `get_led_effect/nut87_post_reset` read `00 00` there.
+5. **Not in the corpus, by design:** SET_FACTORY_RESET (one fire-and-forget report,
+   no response — its frame is pinned against the bundle's encoder in
+   `internal/protocol/reset_test.go`, and a factory reset is destructive) and the
+   device notify commands (unsolicited input, not a transfer). `nutctl fixtures
+   record` captures both whenever a hardware run produces them — it records whatever
+   the recorded session does (`nutctl fixtures record … reset --keys`,
+   `nutctl fixtures record … watch`) — so the gap closes opportunistically.
+

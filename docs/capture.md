@@ -31,7 +31,39 @@ with `nutctl`. Every response is self-validating:
 This method needs **no vendor software at all** and is sufficient to ship v1
 (keymap, Fn layer, lighting, macros, settings). `nutctl fixtures record` dumps
 every request/response pair it sees into `testdata/captures/`, so probing and
-fixture generation are the same activity.
+fixture generation are the same activity:
+
+```sh
+nutctl fixtures record                         # record the default read session
+                                               # (probe + one full checked read pass)
+nutctl fixtures record load state.json --i-know-what-im-doing
+                                               # record THAT session — whatever the
+                                               # command does on the wire (writes,
+                                               # reset, watch traffic included)
+nutctl fixtures record --out /tmp/corpus --case fw121 --device /dev/hidraw10
+                                               # pick the corpus dir and case name
+```
+
+The recorder is a passive observer: it never touches the wire itself, and the
+recorded session runs its own gates (ADR-0003) unchanged. One fixture per
+transfer lands in `<out>/<cmd>/<case>.{req,res}.hex` + `meta.json` (firmware
+version, connection type, capture method — the provenance a fixture needs to
+be evidence); a command seen twice in one session gets `<case>-2`, `<case>-3`
+…, and re-recording a case replaces its files. Metadata and wire bytes are the
+corpus format `internal/fixture` reads back (`nutctl get` tests replay the
+recordings through the fake Device), so a recording can go straight into the
+repo as a test fixture.
+
+Two habits keep the corpus honest:
+
+- **Scrub, never drop.** The `source` line quotes the command that was
+  recorded — if a dump ever names something personal, scrub `meta.json`
+  rather than deleting the fixture (spec: "anything sensitive found in a dump
+  is scrubbed from metadata rather than dropping the fixture").
+- **One `--case` per session.** Re-recording a case replaces its files, but a
+  later session with fewer exchanges of the same command leaves the previous
+  session's numbered `<case>-2` files behind — record a fresh case name
+  instead of reusing one.
 
 ## Method B — kernel USB capture (verification / unknowns)
 

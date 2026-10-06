@@ -95,7 +95,7 @@ func rawRead(d *Device, cmd byte, size int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return reassemble(responses, size), nil
+	return Reassemble(responses, size), nil
 }
 
 func hwBlocks() []hwBlock {

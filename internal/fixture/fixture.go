@@ -1,13 +1,15 @@
-// Package fixture loads recorded request/response exchanges from
+// Package fixture loads and stores recorded request/response exchanges from
 // testdata/captures/<cmd>/<case>.{req,res}.hex plus <case>.meta.json.
 //
-// One exchange is one transfer as it appeared on the wire: every request report
-// (32-byte output report) and every response report (input report), in order.
-// Recording live sessions into this format is issue 09; this package only
-// reads what is committed to the repo.
+// One exchange is one transfer as it appeared on the wire: every request
+// report (output report) and every response report (input report), in order.
+// Load reads what is committed to the repo; Save writes the same format —
+// `nutctl fixtures record` (docs/capture.md Method A) records live sessions
+// with it, so probing the protocol and building the corpus are one activity.
 package fixture
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -82,6 +84,55 @@ func LoadDir(dir string) ([]Exchange, error) {
 	}
 	return out, nil
 }
+
+// Save writes one exchange to dir as <case>.req.hex, <case>.res.hex and
+// <case>.meta.json — the exact format Load reads back (the round trip is
+// pinned by the package tests over the committed corpus). Existing files for
+// the same case are replaced: re-recording a case refreshes it.
+func Save(dir string, x Exchange) error {
+	if x.Case == "" {
+		return fmt.Errorf("fixture: empty case name")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := writeReports(filepath.Join(dir, x.Case+".req.hex"), x.Requests); err != nil {
+		return err
+	}
+	if err := writeReports(filepath.Join(dir, x.Case+".res.hex"), x.Responses); err != nil {
+		return err
+	}
+	meta := x.Meta
+	meta.Case = x.Case
+	meta.Cmd = x.Cmd
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(meta); err != nil {
+		return fmt.Errorf("fixture %s/%s: meta.json: %w", dir, x.Case, err)
+	}
+	return os.WriteFile(filepath.Join(dir, x.Case+".meta.json"), buf.Bytes(), 0o644)
+}
+
+// writeReports writes a hex report file: one report per line, uppercase hex.
+func writeReports(path string, reports [][]byte) error {
+	var sb strings.Builder
+	sb.WriteString(reportFileHeader + "\n")
+	for _, r := range reports {
+		sb.WriteString(strings.ToUpper(hex.EncodeToString(r)))
+		sb.WriteString("\n")
+	}
+	return os.WriteFile(path, []byte(sb.String()), 0o644)
+}
+
+// reportFileHeader is the first line of every .hex report file.
+const reportFileHeader = "# one report per line"
+
+// DirFor maps a wire command name (meta.json's `cmd`, e.g. "GET_KEY") to its
+// corpus directory (testdata/captures/get_key). The corpus is organized one
+// directory per command, named after the command in lower case.
+func DirFor(cmdName string) string { return strings.ToLower(cmdName) }
 
 // readReports parses a hex report file: one report per line, '#' comments and
 // blank lines ignored.

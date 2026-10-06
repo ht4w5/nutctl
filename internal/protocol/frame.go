@@ -4,7 +4,10 @@
 // contract); callers use typed Device operations and never see bytes.
 package protocol
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 // Frame constants (docs/protocol.md §2).
 const (
@@ -117,4 +120,60 @@ func ParseResponse(report []byte) (Response, error) {
 		Addr:      uint16(report[3]) | uint16(report[4])<<8,
 		Data:      report[HeaderSize:],
 	}, nil
+}
+
+// ParseRequest decodes one output report as a request chunk — the inverse of
+// Request.Marshal for the standard 8-byte header (docs/protocol.md §2).
+// Payload is the chunk payload (report bytes 8.., at most the chunk length
+// the header carries). The custom-header requests of §2 (pre-built headers,
+// e.g. single-Key-Slot reads) are refused: they do not carry the framing this
+// parses. The v0 commands leave otherHeader zeroed except byte 6, the
+// last-packet flag; requests that load the other bytes are parsed as observed
+// and their LastPacket bit is the byte as it stood.
+func ParseRequest(report []byte) (Request, error) {
+	if len(report) < HeaderSize {
+		return Request{}, fmt.Errorf("short request report (%d bytes)", len(report))
+	}
+	if report[0] != RequestMagic {
+		return Request{}, fmt.Errorf("bad request magic %#x (want %#x) — custom header or not a request", report[0], RequestMagic)
+	}
+	length := int(report[2])
+	if max := len(report) - HeaderSize; length > max {
+		length = max // a length byte the header overloads (e.g. reset's scope) — keep the report, not the claim
+	}
+	return Request{
+		Cmd:         report[1],
+		Length:      report[2],
+		Addr:        uint16(report[3]) | uint16(report[4])<<8,
+		Payload:     bytes.Clone(report[HeaderSize : HeaderSize+length]),
+		OtherHeader: bytes.Clone(report[5:8]),
+		LastPacket:  report[6] == 1,
+	}, nil
+}
+
+// CommandName is the firmware's name for one command id (the table of
+// docs/protocol.md §3). It is what meta.json records as `cmd` and what the
+// corpus directory is named after (internal/fixture.DirFor).
+func CommandName(cmd byte) string {
+	if name, ok := commandNames[cmd]; ok {
+		return name
+	}
+	return fmt.Sprintf("UNKNOWN_%d", cmd)
+}
+
+var commandNames = map[byte]string{
+	CmdGetDeviceInfo:          "GET_DEVICE_INFO",
+	CmdGetGameMode:            "GET_GAME_MODE",
+	CmdGetKey:                 "GET_KEY",
+	CmdGetLEDEffect:           "GET_LED_EFFECT",
+	CmdGetCustomLEDData:       "GET_CUSTOM_LED_DATA",
+	CmdGetFnKey:               "GET_FN_KEY",
+	CmdSetFactoryReset:        "SET_FACTORY_RESET",
+	CmdSetGameMode:            "SET_GAME_MODE",
+	CmdSetKey:                 "SET_KEY",
+	CmdSetLEDEffect:           "SET_LED_EFFECT",
+	CmdSetCustomLEDData:       "SET_CUSTOM_LED_DATA",
+	CmdSetFnKey:               "SET_FN_KEY",
+	CmdGetDeviceNotify:        "GET_DEVICE_NOTIFY",
+	CmdGet24GDisconnectNotify: "GET_24G_DISCONNECT_NOTIFY",
 }

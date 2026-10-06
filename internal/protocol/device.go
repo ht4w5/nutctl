@@ -282,7 +282,7 @@ func (d *Device) Info(ctx context.Context) (DeviceInfo, error) {
 	if err != nil {
 		return DeviceInfo{}, fmt.Errorf("GET_DEVICE_INFO: %w", err)
 	}
-	info, err := DecodeDeviceInfo(reassemble(responses, DeviceInfoSize))
+	info, err := DecodeDeviceInfo(Reassemble(responses, DeviceInfoSize))
 	if err != nil {
 		return DeviceInfo{}, fmt.Errorf("GET_DEVICE_INFO: %w", err)
 	}
@@ -300,7 +300,7 @@ func (d *Device) Settings(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, fmt.Errorf("GET_GAME_MODE: %w", err)
 	}
-	settings, err := DecodeSettings(reassemble(responses, SettingsSize))
+	settings, err := DecodeSettings(Reassemble(responses, SettingsSize))
 	if err != nil {
 		return Settings{}, fmt.Errorf("GET_GAME_MODE: %w", err)
 	}
@@ -317,7 +317,7 @@ func (d *Device) Keymap(ctx context.Context) (Keymap, error) {
 	if err != nil {
 		return Keymap{}, fmt.Errorf("GET_KEY: %w", err)
 	}
-	keymap, err := DecodeKeymap(reassemble(responses, KeymapSize))
+	keymap, err := DecodeKeymap(Reassemble(responses, KeymapSize))
 	if err != nil {
 		return Keymap{}, fmt.Errorf("GET_KEY: %w", err)
 	}
@@ -334,7 +334,7 @@ func (d *Device) FnKeymap(ctx context.Context) (Keymap, error) {
 	if err != nil {
 		return Keymap{}, fmt.Errorf("GET_FN_KEY: %w", err)
 	}
-	keymap, err := DecodeKeymap(reassemble(responses, KeymapSize))
+	keymap, err := DecodeKeymap(Reassemble(responses, KeymapSize))
 	if err != nil {
 		return Keymap{}, fmt.Errorf("GET_FN_KEY: %w", err)
 	}
@@ -353,7 +353,7 @@ func (d *Device) LightingEffect(ctx context.Context) (LightingEffect, error) {
 	if err != nil {
 		return LightingEffect{}, fmt.Errorf("GET_LED_EFFECT: %w", err)
 	}
-	effect, err := DecodeLightingEffect(reassemble(responses, LEDEffectSize))
+	effect, err := DecodeLightingEffect(Reassemble(responses, LEDEffectSize))
 	if err != nil {
 		return LightingEffect{}, fmt.Errorf("GET_LED_EFFECT: %w", err)
 	}
@@ -370,7 +370,7 @@ func (d *Device) PerKeyRGB(ctx context.Context) (PerKeyRGB, error) {
 	if err != nil {
 		return PerKeyRGB{}, fmt.Errorf("GET_CUSTOM_LED_DATA: %w", err)
 	}
-	rgb, err := DecodePerKeyRGB(reassemble(responses, PerKeyRGBSize))
+	rgb, err := DecodePerKeyRGB(Reassemble(responses, PerKeyRGBSize))
 	if err != nil {
 		return PerKeyRGB{}, fmt.Errorf("GET_CUSTOM_LED_DATA: %w", err)
 	}
@@ -432,9 +432,9 @@ func (d *Device) runTransferErr(ctx context.Context, name string, tr transferSpe
 	return nil
 }
 
-// reassemble concatenates the data of each response report and truncates to
+// Reassemble concatenates the data of each response report and truncates to
 // size (docs/protocol.md §2).
-func reassemble(responses [][]byte, size int) []byte {
+func Reassemble(responses [][]byte, size int) []byte {
 	var out []byte
 	for _, raw := range responses {
 		resp, err := ParseResponse(raw)

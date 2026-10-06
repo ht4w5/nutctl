@@ -131,7 +131,7 @@ func TestKeyActionTypeLabels(t *testing.T) {
 // them, encode reproduces them, whatever page type they carry).
 func TestEncodeKeymapReproducesRecordedBlock(t *testing.T) {
 	x := loadFixture(t, "get_key", "nut87")
-	payload := reassemble(x.Responses, KeymapSize)
+	payload := Reassemble(x.Responses, KeymapSize)
 	keymap, err := DecodeKeymap(payload)
 	if err != nil {
 		t.Fatalf("DecodeKeymap: %v", err)

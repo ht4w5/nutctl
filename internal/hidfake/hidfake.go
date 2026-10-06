@@ -70,8 +70,13 @@ func (d *Device) ScriptGarbage(req, junk []byte) {
 }
 
 // Replay scripts a recorded exchange: request report i is answered with
-// response report i.
+// response report i. An exchange without requests (unsolicited input —
+// device notify traffic) is injected as the Device pushed it.
 func (d *Device) Replay(x fixture.Exchange) {
+	if len(x.Requests) == 0 {
+		d.Inject(x.Responses...)
+		return
+	}
 	for i, req := range x.Requests {
 		if i < len(x.Responses) {
 			d.Script(req, x.Responses[i])

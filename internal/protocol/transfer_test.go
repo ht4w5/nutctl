@@ -340,7 +340,7 @@ func TestKeymapMultiChunkReassemblyOverFakeDevice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Keymap: %v", err)
 	}
-	want, err := DecodeKeymap(reassemble(x.Responses, KeymapSize))
+	want, err := DecodeKeymap(Reassemble(x.Responses, KeymapSize))
 	if err != nil {
 		t.Fatalf("DecodeKeymap: %v", err)
 	}
@@ -591,7 +591,7 @@ func assertSetMatchesFixture(t *testing.T, setDir, getDir string, set func(*Devi
 	dev := newDevice(t, fake)
 
 	r := loadFixture(t, getDir, "nut87")
-	payload := reassemble(r.Responses, reassembledSize(getDir))
+	payload := Reassemble(r.Responses, reassembledSize(getDir))
 	if err := set(dev, payload); err != nil {
 		t.Fatalf("SET %s: %v", setDir, err)
 	}

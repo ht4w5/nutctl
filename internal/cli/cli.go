@@ -53,6 +53,8 @@ usage:
   nutctl reset --keys|--lighting|--macros|--all [--device P] [--i-know-what-im-doing]
                                              factory reset one scope (typed confirmation, write-gated)
   nutctl watch [--device P]                  stream device notify traffic live (read-only)
+  nutctl fixtures record [--out DIR] [--case NAME] [--device P] [<command> [<args>…]]
+                                             record a live session's request/response pairs as corpus fixtures
 
 Bare nutctl opens the TUI (ADR-0004); the commands above are its scriptable
 side (see PLAN.md).
@@ -91,6 +93,8 @@ func Run(args []string, deps Deps) int {
 		return runReset(args[1:], deps)
 	case "watch":
 		return runWatch(args[1:], deps)
+	case "fixtures":
+		return runFixtures(args[1:], deps)
 	case "help", "--help", "-h":
 		fmt.Fprint(deps.Stdout, usageText)
 		return 0

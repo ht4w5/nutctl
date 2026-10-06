@@ -9,7 +9,7 @@ import (
 // A); these decoders must reproduce exactly what the Device reported.
 func TestDecodeDeviceInfoFromFixture(t *testing.T) {
 	x := loadFixture(t, "get_device_info", "nut87")
-	info, err := DecodeDeviceInfo(reassemble(x.Responses, DeviceInfoSize))
+	info, err := DecodeDeviceInfo(Reassemble(x.Responses, DeviceInfoSize))
 	if err != nil {
 		t.Fatalf("DecodeDeviceInfo: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDecodeDeviceInfoFromFixture(t *testing.T) {
 
 func TestDecodeSettingsFromFixture(t *testing.T) {
 	x := loadFixture(t, "get_game_mode", "nut87")
-	settings, err := DecodeSettings(reassemble(x.Responses, SettingsSize))
+	settings, err := DecodeSettings(Reassemble(x.Responses, SettingsSize))
 	if err != nil {
 		t.Fatalf("DecodeSettings: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestDecodeSettingsFromFixture(t *testing.T) {
 
 func TestDecodeSeedFixtures(t *testing.T) {
 	x := loadFixture(t, "get_device_info", "seed-32byte")
-	info, err := DecodeDeviceInfo(reassemble(x.Responses, DeviceInfoSize))
+	info, err := DecodeDeviceInfo(Reassemble(x.Responses, DeviceInfoSize))
 	if err != nil {
 		t.Fatalf("DecodeDeviceInfo: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestEncodeSettingsUsesSetWireFormat(t *testing.T) {
 // on.
 func TestEncodeSettingsRoundTrip(t *testing.T) {
 	x := loadFixture(t, "get_game_mode", "nut87")
-	payload := reassemble(x.Responses, SettingsSize)
+	payload := Reassemble(x.Responses, SettingsSize)
 	s, err := DecodeSettings(payload)
 	if err != nil {
 		t.Fatalf("DecodeSettings: %v", err)
