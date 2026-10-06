@@ -1,9 +1,7 @@
 package protocol
 
 import (
-	"bytes"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/ht4w5/nutctl/internal/fixture"
@@ -105,69 +103,45 @@ func TestCorpusFollowsFraming(t *testing.T) {
 	t.Logf("%d committed exchanges follow the documented framing", exchanges)
 }
 
-// checkExchangeFraming asserts one exchange against docs/protocol.md §2 as
-// recorded: request and response reports parse, responses answer their own
-// command at their own chunk offset, and one transfer carries exactly one
-// complete block.
+// checkExchangeFraming asserts one exchange against the framing of
+// docs/protocol.md §2 as recorded — the shared protocol.ValidateTransfer,
+// which `nutctl fixtures import-pcap` imports by (one framing contract, not
+// two copies) — plus the shape the corpus documents: one transfer carries
+// exactly one complete §4 block. Unsolicited input (device notify traffic,
+// no requests) carries no block; an exchange named UNPARSED is recorded as
+// observed traffic and claims no framing at all.
 func checkExchangeFraming(t *testing.T, dir string, x fixture.Exchange) {
 	t.Helper()
 	id := dir + "/" + x.Case
 	if x.Case == "" {
 		t.Errorf("%s: empty case name", id)
 	}
+	tr := WireTransfer{Requests: x.Requests, Responses: x.Responses}
+	if want := TransferName(tr); want != x.Cmd {
+		t.Errorf("%s: meta cmd = %q, but the wire carries %q", id, x.Cmd, want)
+	}
+	if err := ValidateTransfer(tr); err != nil {
+		if x.Cmd == "UNPARSED" {
+			t.Logf("%s: recorded as observed (unparseable input kept, never dropped): %v", id, err)
+		} else {
+			t.Errorf("%s: %v", id, err)
+		}
+	}
 	if len(x.Requests) == 0 {
-		t.Errorf("%s: exchange without request reports", id)
 		return
 	}
 	first, err := ParseRequest(x.Requests[0])
 	if err != nil {
-		t.Errorf("%s: %v", id, err)
-		return
+		return // reported above
 	}
-	if name := CommandName(first.Cmd); name != x.Cmd {
-		t.Errorf("%s: meta cmd = %q, but the wire carries %q", id, x.Cmd, name)
-	}
-
 	var sumReq int
-	for i, report := range x.Requests {
+	for _, report := range x.Requests {
 		req, err := ParseRequest(report)
 		if err != nil {
-			t.Errorf("%s: request report %d: %v", id, i, err)
-			continue
-		}
-		if req.Cmd != first.Cmd {
-			t.Errorf("%s: request report %d carries cmd %d, want %d", id, i, req.Cmd, first.Cmd)
+			continue // reported above
 		}
 		sumReq += int(req.Length)
-		if i > 0 {
-			prev, _ := ParseRequest(x.Requests[i-1])
-			if req.Addr < prev.Addr {
-				t.Errorf("%s: request report %d walks addr backwards (%d → %d)", id, i, prev.Addr, req.Addr)
-			}
-		}
 	}
-	for i, report := range x.Responses {
-		resp, err := ParseResponse(report)
-		if err != nil {
-			t.Errorf("%s: response report %d: %v", id, i, err)
-			continue
-		}
-		if resp.Cmd != first.Cmd {
-			t.Errorf("%s: response report %d answers cmd %d, want %d", id, i, resp.Cmd, first.Cmd)
-		}
-		if i < len(x.Requests) {
-			req, err := ParseRequest(x.Requests[i])
-			if err == nil && resp.Addr != req.Addr {
-				t.Errorf("%s: response report %d addr %#x ≠ request addr %#x (§2: the response mirrors the request offset)",
-					id, i, resp.Addr, req.Addr)
-			}
-			if err == nil && resp.LenOrType != req.Length {
-				t.Errorf("%s: response report %d lenOrType %d ≠ request chunk length %d (§2: the response mirrors the request chunk)",
-					id, i, resp.LenOrType, req.Length)
-			}
-		}
-	}
-
 	size, known := blockSizes[first.Cmd]
 	if !known {
 		return
@@ -181,30 +155,5 @@ func checkExchangeFraming(t *testing.T, dir string, x fixture.Exchange) {
 	}
 	if got := Reassemble(x.Responses, size); len(got) != size {
 		t.Errorf("%s: responses reassemble to %d bytes, want %d (§2 reassembly)", id, len(got), size)
-	}
-	// §2: "the NUT87's ack echoes the written block back". For a write, the
-	// response data of each chunk is the chunk payload — what the read-back
-	// verification depends on. The bytes a chunk does not claim (padding past
-	// the chunk length) are the Device's own and are not compared.
-	if strings.HasPrefix(x.Cmd, "SET_") {
-		for i := range x.Responses {
-			if i >= len(x.Requests) {
-				break
-			}
-			req, err1 := ParseRequest(x.Requests[i])
-			resp, err2 := ParseResponse(x.Responses[i])
-			if err1 != nil || err2 != nil {
-				continue
-			}
-			want := req.Payload
-			if len(resp.Data) < len(want) {
-				t.Errorf("%s: ack %d carries %d data bytes, shorter than the chunk it echoes (%d)",
-					id, i, len(resp.Data), len(want))
-				continue
-			}
-			if got := resp.Data[:len(want)]; !bytes.Equal(got, want) {
-				t.Errorf("%s: ack %d does not echo the written chunk payload:\n got % X\nwant % X", id, i, got, want)
-			}
-		}
 	}
 }

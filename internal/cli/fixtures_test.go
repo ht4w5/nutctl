@@ -20,12 +20,18 @@ import (
 // require its output to be the corpus format byte for byte — recorded
 // fixtures must drive the fake Device exactly like the committed ones do.
 
-// recordedFixture loads one fixture the recorder wrote under dir.
+// recordedFixture loads one fixture the recorder or importer wrote under dir.
 func recordedFixture(t *testing.T, dir, name string) fixture.Exchange {
 	t.Helper()
-	x, err := fixture.Load(filepath.Join("corpus", dir), name)
+	return recordedFixtureIn(t, "corpus", dir, name)
+}
+
+// recordedFixtureIn loads one such fixture from a chosen corpus directory.
+func recordedFixtureIn(t *testing.T, corpus, dir, name string) fixture.Exchange {
+	t.Helper()
+	x, err := fixture.Load(filepath.Join(corpus, dir), name)
 	if err != nil {
-		t.Fatalf("recorded fixture %s/%s: %v", dir, name, err)
+		t.Fatalf("recorded fixture %s/%s/%s: %v", corpus, dir, name, err)
 	}
 	return x
 }
@@ -249,7 +255,7 @@ func TestFixturesRecordRecordsResetExchanges(t *testing.T) {
 func TestFixturesRecordUsageErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{"fixtures"},
-		{"fixtures", "import-pcap"}, // not implemented yet (ticket 10)
+		{"fixtures", "import-pcap"}, // no capture file (import-pcap is its own subcommand)
 		{"fixtures", "record", "--device", "/dev/hidraw3", "get", "keymap"},
 	} {
 		d := newNut87Fake(t, "/dev/hidraw3")

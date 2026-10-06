@@ -129,6 +129,23 @@ func Identify(id Identity) (Model, error) {
 	return Model{}, fmt.Errorf("unknown device: USB %s %q is not a keyboard this tool knows", id.USBID(), id.ProductName)
 }
 
+// ModelByName returns the Model with this name (CONTEXT.md) — the lookup
+// `nutctl fixtures import-pcap --model` uses, since a kernel capture carries
+// no USB product strings to identify a Device by. An unknown name is a clear
+// refusal listing the Models this build knows, never a best guess.
+func ModelByName(name string) (Model, error) {
+	for _, m := range knownModels {
+		if m.Name == name {
+			return m, nil
+		}
+	}
+	names := make([]string, len(knownModels))
+	for i, m := range knownModels {
+		names[i] = m.Name
+	}
+	return Model{}, fmt.Errorf("unknown Model %q; this build knows %s", name, strings.Join(quoteAll(names), ", "))
+}
+
 // CheckSupported refuses Models this tool must not configure (wrong-Model
 // error, never a silent best effort).
 func CheckSupported(m Model) error {

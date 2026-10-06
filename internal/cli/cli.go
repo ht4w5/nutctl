@@ -55,6 +55,8 @@ usage:
   nutctl watch [--device P]                  stream device notify traffic live (read-only)
   nutctl fixtures record [--out DIR] [--case NAME] [--device P] [<command> [<args>…]]
                                              record a live session's request/response pairs as corpus fixtures
+  nutctl fixtures import-pcap <file> --model M [--out DIR] [--case NAME] [--usb B.D]
+                                             import a kernel usbmon capture as corpus fixtures
 
 Bare nutctl opens the TUI (ADR-0004); the commands above are its scriptable
 side (see PLAN.md).

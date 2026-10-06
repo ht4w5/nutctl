@@ -34,13 +34,19 @@ import (
 // session; a command seen more than once gets <case>-2, <case>-3, …
 // Re-recording a case replaces it (refreshing the corpus is the point).
 
-// runFixtures dispatches the `fixtures` subcommands. `record` is the only
-// one so far (`import-pcap` is ticket 10).
+// runFixtures dispatches the `fixtures` subcommands: `record` (live
+// sessions) and `import-pcap` (kernel captures, docs/capture.md Method B).
 func runFixtures(args []string, deps Deps) int {
-	if len(args) == 0 || args[0] != "record" {
-		return usageError(deps, fmt.Errorf("fixtures needs a subcommand: record"))
+	if len(args) == 0 {
+		return usageError(deps, fmt.Errorf("fixtures needs a subcommand: record, import-pcap"))
 	}
-	return runFixturesRecord(args[1:], deps)
+	switch args[0] {
+	case "record":
+		return runFixturesRecord(args[1:], deps)
+	case "import-pcap":
+		return runFixturesImportPcap(args[1:], deps)
+	}
+	return usageError(deps, fmt.Errorf("fixtures needs a subcommand: record, import-pcap"))
 }
 
 func runFixturesRecord(args []string, deps Deps) int {
@@ -149,14 +155,15 @@ func (r *recorder) save(opts recordOpts, out io.Writer) (int, error) {
 		// loudly instead of committing a meta.json that guesses.
 		return 0, fmt.Errorf("recorded Device %q is not a known Model: %w", info.ProductName, err)
 	}
-	firmware, err := recordedFirmware(transfers)
+	di, probed, err := capturedProbe(transfers)
 	if err != nil {
 		return 0, fmt.Errorf("recorded GET_DEVICE_INFO does not decode: %w", err)
 	}
-	firmwareShown := firmware
-	if firmwareShown == "" {
-		firmwareShown = "unknown"
+	firmware := ""
+	if probed {
+		firmware = di.Version
 	}
+	firmwareShown := firmwareLabel(firmware)
 	reportLen := info.ReportLength
 	if reportLen == 0 {
 		reportLen = 32
@@ -171,71 +178,81 @@ func (r *recorder) save(opts recordOpts, out io.Writer) (int, error) {
 		opts.Now.Format("2006-01-02"), info.Path, info.VendorID, info.ProductID, info.UsagePage,
 		firmwareShown, reportLen, opts.Session)
 
+	return writeFixtures(transfers, writeOpts{
+		OutDir: opts.OutDir,
+		Case:   caseName,
+		Meta: fixture.Meta{
+			Model:         model.Name,
+			Connection:    string(model.Connection),
+			Firmware:      firmware,
+			CaptureMethod: "active-probing",
+			Source:        source,
+		},
+	}, out)
+}
+
+// writeOpts is the naming and provenance of one set of fixtures — what
+// meta.json holds beyond the wire bytes themselves (docs/capture.md).
+type writeOpts struct {
+	OutDir string       // corpus directory to write into
+	Case   string       // fixture case name (the same name numbers repeats <case>-2, …)
+	Meta   fixture.Meta // model, connection, firmware, capture method, source
+}
+
+// writeFixtures writes each exchange as one corpus fixture
+// (internal/fixture), named by the wire (protocol.TransferName). A command
+// seen more than once in one capture gets <case>-2, <case>-3, … in stream
+// order. It returns the number of fixtures written.
+func writeFixtures(transfers []protocol.WireTransfer, opts writeOpts, out io.Writer) (int, error) {
 	seen := map[string]int{}
 	for _, tr := range transfers {
-		name := transferName(tr)
+		name := protocol.TransferName(tr)
 		seen[name]++
-		caseN := caseName
+		caseName := opts.Case
 		if seen[name] > 1 {
-			caseN = fmt.Sprintf("%s-%d", caseName, seen[name])
+			caseName = fmt.Sprintf("%s-%d", opts.Case, seen[name])
 		}
 		x := fixture.Exchange{
-			Case:      caseN,
+			Case:      caseName,
 			Cmd:       name,
 			Requests:  tr.Requests,
 			Responses: tr.Responses,
-			Meta: fixture.Meta{
-				Model:         model.Name,
-				Connection:    string(model.Connection),
-				Firmware:      firmware,
-				CaptureMethod: "active-probing",
-				Source:        source,
-			},
+			Meta:      opts.Meta,
 		}
 		if err := fixture.Save(filepath.Join(opts.OutDir, fixture.DirFor(name)), x); err != nil {
 			return 0, err
 		}
 		fmt.Fprintf(out, "  %s/%s: %d request report(s), %d response report(s)\n",
-			fixture.DirFor(name), caseN, len(tr.Requests), len(tr.Responses))
+			fixture.DirFor(name), caseName, len(tr.Requests), len(tr.Responses))
 	}
 	return len(transfers), nil
 }
 
-// recordedFirmware is the firmware version the session's own GET_DEVICE_INFO
-// exchange carried — what meta.json records alongside every fixture. It is
-// "" when the session never probed (nothing to claim), and an error when the
-// probe exists but does not decode (recorded bytes that cannot be evidence).
-func recordedFirmware(transfers []protocol.WireTransfer) (string, error) {
+// firmwareLabel renders the firmware version for provenance text: "unknown"
+// when a capture carries no GET_DEVICE_INFO to claim one from.
+func firmwareLabel(version string) string {
+	if version == "" {
+		return "unknown"
+	}
+	return version
+}
+
+// capturedProbe is the GET_DEVICE_INFO exchange a capture carried — the
+// firmware version and USB ids the metadata records. It reports ok=false
+// when the capture never probed (nothing to claim) and an error when the
+// probe exists but does not decode (captured bytes that cannot be evidence).
+func capturedProbe(transfers []protocol.WireTransfer) (protocol.DeviceInfo, bool, error) {
 	for _, tr := range transfers {
 		if tr.Cmd != protocol.CmdGetDeviceInfo || len(tr.Responses) == 0 {
 			continue
 		}
 		di, err := protocol.DecodeDeviceInfo(protocol.Reassemble(tr.Responses, protocol.DeviceInfoSize))
 		if err != nil {
-			return "", err
+			return protocol.DeviceInfo{}, false, err
 		}
-		return di.Version, nil
+		return di, true, nil
 	}
-	return "", nil
-}
-
-// transferName is the fixture's command name (meta.json's `cmd`): the command
-// on the wire, named after the firmware's own table. Reports outside the
-// framing are recorded as UNPARSED rather than dropped.
-func transferName(tr protocol.WireTransfer) string {
-	if len(tr.Requests) > 0 {
-		if req, err := protocol.ParseRequest(tr.Requests[0]); err == nil {
-			return protocol.CommandName(req.Cmd)
-		}
-		return "UNPARSED"
-	}
-	if len(tr.Responses) > 0 {
-		if resp, err := protocol.ParseResponse(tr.Responses[0]); err == nil {
-			return protocol.CommandName(resp.Cmd)
-		}
-		return "UNPARSED"
-	}
-	return "UNPARSED"
+	return protocol.DeviceInfo{}, false, nil
 }
 
 // recordEnumerator wraps the Transport seam so every report the recorded

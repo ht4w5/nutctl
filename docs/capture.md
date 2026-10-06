@@ -99,11 +99,49 @@ Then turn the pcap into fixtures:
 ```sh
 nutctl fixtures import-pcap nut87.pcapng --model NUT87
 # → testdata/captures/<cmd>/<case>.{req,res}.hex + meta.json
+nutctl fixtures import-pcap nut87.pcapng --model NUT87 --case fw121 --usb 2.14 --out /tmp/corpus
 ```
 
-The importer groups URBs into transfers, reassembles chunks (8-byte header, 24-byte
-payloads), and pairs requests with responses by command id — the same logic
-`internal/protocol` uses, so a parse failure is itself a bug report.
+The importer reads the capture's URBs (pcap or pcapng of Linux usbmon,
+`LINKTYPE_USB_LINUX`/`..._MMAPPED` — what tshark and Wireshark write; anything
+else is refused by name), keeps the HID reports that carry the protocol —
+interrupt transfers plus `SET_REPORT`/`GET_REPORT` control transfers, one
+report per URB, 32- or 64-byte reports (§1/§6.5), with the HID report-id
+prefix (output report id 0) stripped and counted — and groups them into
+transfers with the same logic `internal/protocol` uses
+(`protocol.SplitTransfers`: chunk reassembly, response matching by cmd/addr).
+One transfer is one fixture, in the Method A corpus format.
+
+- **`--model` is required**: a kernel capture carries no USB product strings
+  to identify the Device by (CONTEXT.md: the name fields are decisive), and
+  the capture cannot disambiguate shared product ids on its own — the
+  firmware's name fields never reach usbmon, so `--model` is the operator's
+  claim. The capture's own `GET_DEVICE_INFO` is cross-checked against the
+  Model's USB ids and supplies the firmware version for the metadata; a
+  capture of another Device (other USB ids) is refused — a fixture whose
+  Device is wrong is not evidence.
+- **`--usb <bus>.<dev>`** picks the Device when the capture holds several
+  that speak the protocol (never a best guess); without it, exactly one must.
+- **Imported fixtures validate against the protocol framing**
+  (`protocol.ValidateTransfer`, the same contract `corpus_test.go` keeps the
+  committed corpus to). An exchange that does not validate is not imported —
+  its failure is reported instead.
+- **Unparseable traffic is reported loudly instead of silently dropped.** A
+  protocol-sized report on the Device's protocol streams that does not parse
+  is a parse failure — a bug report: keep the bytes and file it. Everything
+  else the capture holds (other Devices, key reports on the keyboard's own
+  endpoint, non-report URBs, the documented 2.4G wake report) is counted and
+  sampled in the same report. The exit code is 1 when a parse failure or a
+  framing failure was left behind (bug-report material); expected noise is
+  reported but does not fail the import. The exchanges that did parse are
+  imported regardless.
+- **Metadata records the capture provenance** — pcap source, Device (Model,
+  USB ids, bus/device address), streams, report length, capture date and the
+  firmware version where the capture knows one (`captureMethod:
+  "usbmon-pcap"`).
+- Device notify traffic (`55 FA`/`55 FC`) imports as response-only fixtures
+  (`get_device_notify`, `get_24g_disconnect_notify`), which is how the
+  notify corpus of ticket 08's follow-up gets filled from captures.
 
 ## Method C — five-minute check before giving up on the browser (optional)
 

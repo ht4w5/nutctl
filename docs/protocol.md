@@ -520,12 +520,17 @@ The reconciliation is kept honest by tests, not by this section alone:
   the v0 read and write paths put on the wire** (the identity probe + the five
   blocks and their five SET counterparts), and every committed exchange to follow
   the §2 framing: request/response headers parse, the response mirrors its request
-  chunk's `lenOrType` and `addr`, one transfer carries exactly one complete block
-  (§4 sizes), and a SET ack echoes the chunk payload it was sent. A fixture that
-  disagrees with these notes fails the suite and names itself.
+  chunk's `lenOrType` and `addr`, and a SET ack echoes the chunk payload it was
+  sent. The framing contract is one function — `protocol.ValidateTransfer` — which
+  `nutctl fixtures import-pcap` (Method B) also validates imports against, so a
+  fixture that disagrees with these notes fails the suite and names itself. The
+  corpus's own shape is stricter than framing: one transfer carries exactly one
+  complete block (§4 sizes).
 - `internal/fixture` pins the corpus format round-trip (Save ⇄ Load) over every
   committed fixture.
-- New recordings go in through `nutctl fixtures record` (docs/capture.md Method A),
+- New recordings go in through `nutctl fixtures record` (docs/capture.md Method A)
+  or `nutctl fixtures import-pcap` (Method B, kernel usbmon captures of the vendor
+  app),
   which stores the wire bytes plus the provenance metadata (firmware version,
   connection type, capture method) — probing and corpus building are one activity.
 

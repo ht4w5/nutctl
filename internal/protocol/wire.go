@@ -120,3 +120,62 @@ func unsolicitedCmd(report []byte) byte {
 	}
 	return 0
 }
+
+// reportLengths are the report lengths the protocol speaks
+// (docs/protocol.md §1 and §6.5): 32 bytes on the reference device, 64 on
+// the observed NUT87 (and its `..._64_BYTE` variants). A HID report of this
+// protocol carries one of these, plus at most one leading report-id byte
+// (output report id 0, as hidraw writes it).
+var reportLengths = [...]int{32, 64}
+
+func reportSized(n int) bool {
+	for _, size := range reportLengths {
+		if n == size {
+			return true
+		}
+	}
+	return false
+}
+
+// ReportKind is what one captured HID report carries (docs/protocol.md §2).
+type ReportKind int
+
+const (
+	// ReportRequest is a request chunk (host → Device, 0xAA framing).
+	ReportRequest ReportKind = iota
+	// ReportResponse is a response chunk (Device → host, 0x55 framing).
+	ReportResponse
+	// ReportWake is the documented 2.4G wake report (§4, out-of-band magic).
+	ReportWake
+	// ReportUnparseable is a report of this protocol's size that carries no
+	// framing this protocol knows. It is never parsed as "something else": a
+	// parse failure is a bug report (docs/capture.md Method B).
+	ReportUnparseable
+	// ReportForeign is not a report of this protocol at all (a keyboard's
+	// key reports, LED reports, descriptors): traffic, not protocol.
+	ReportForeign
+)
+
+// ParseReport classifies one captured HID report and returns the framing
+// bytes fixtures store. The HID report-id prefix (output report id 0) is
+// stripped — the report itself is what the corpus holds — and a report whose
+// size is not this protocol's is ReportForeign, whatever its bytes look
+// like.
+func ParseReport(data []byte) (ReportKind, []byte) {
+	if len(data) > 1 && data[0] == 0x00 && !reportSized(len(data)) && reportSized(len(data)-1) {
+		data = data[1:]
+	}
+	if !reportSized(len(data)) {
+		return ReportForeign, data
+	}
+	if _, err := ParseRequest(data); err == nil {
+		return ReportRequest, data
+	}
+	if _, err := ParseResponse(data); err == nil {
+		return ReportResponse, data
+	}
+	if _, ok := ParseNotify(data); ok {
+		return ReportWake, data // only the wake magic reaches here: 55 FA/FC parse as responses
+	}
+	return ReportUnparseable, data
+}

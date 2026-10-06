@@ -251,3 +251,37 @@ func resReport(cmd byte, length int, addr uint16) []byte {
 	r[4] = byte(addr >> 8)
 	return r
 }
+
+// ParseReport classifies one captured HID report for the pcap importer
+// (ticket 10): what the framing says it is, and what fixtures store. The
+// HID report-id prefix hidraw writes (output report id 0) is stripped; a
+// report of another size is not a report of this protocol at all.
+func TestParseReport(t *testing.T) {
+	req := reqReport(t, CmdGetKey, 56, 0, true)
+	res := resReport(CmdGetKey, 56, 0)
+	wake := append([]byte{0xA6, 0xFF, 0x01}, make([]byte, 61)...)
+	prefixed := func(report []byte) []byte { return append([]byte{0x00}, report...) }
+	for _, tc := range []struct {
+		name    string
+		data    []byte
+		kind    ReportKind
+		payload []byte
+	}{
+		{"request", req, ReportRequest, req},
+		{"response", res, ReportResponse, res},
+		{"wake report", wake, ReportWake, wake},
+		{"prefixed request", prefixed(req), ReportRequest, req},
+		{"prefixed response", prefixed(res), ReportResponse, res},
+		{"key reports are not protocol reports", bytes.Repeat([]byte{0x04}, 8), ReportForeign, nil},
+		{"32-byte device reports are sized", resReport(CmdGetKey, 24, 0)[:32], ReportResponse, nil},
+		{"unparseable protocol report", bytes.Repeat([]byte{0x7E}, 64), ReportUnparseable, nil},
+	} {
+		kind, payload := ParseReport(tc.data)
+		if kind != tc.kind {
+			t.Errorf("ParseReport(%s) kind = %v, want %v", tc.name, kind, tc.kind)
+		}
+		if tc.payload != nil && !bytes.Equal(payload, tc.payload) {
+			t.Errorf("ParseReport(%s) payload = % X, want % X", tc.name, payload, tc.payload)
+		}
+	}
+}

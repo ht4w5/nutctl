@@ -78,3 +78,28 @@ func TestVerifyIdentityCatchesProtocolMismatch(t *testing.T) {
 		t.Errorf("error %q does not mention the self-check", err)
 	}
 }
+
+// ModelByName is the `--model` lookup of `nutctl fixtures import-pcap`
+// (docs/capture.md Method B): a kernel capture carries no USB product strings
+// to identify a Device by, so the Model is named by the operator and
+// cross-checked against the capture's own GET_DEVICE_INFO.
+func TestModelByName(t *testing.T) {
+	m, err := ModelByName("NUT87")
+	if err != nil {
+		t.Fatalf("ModelByName(NUT87): %v", err)
+	}
+	if m.Name != "NUT87" || m.Connection != ConnectionUSB {
+		t.Errorf("ModelByName(NUT87) = %+v, want the NUT87 over USB", m)
+	}
+	// Known sibling Models are data too: the lookup finds them (and
+	// CheckSupported is what refuses them later).
+	if m, err := ModelByName("NUT75"); err != nil || m.Name != "NUT75" {
+		t.Errorf("ModelByName(NUT75) = %+v, %v; want the NUT75", m, err)
+	}
+	// An unknown name is a clear refusal naming the Models this build knows.
+	if _, err := ModelByName("NUT60"); err == nil {
+		t.Error("ModelByName(NUT60) accepted, want a refusal")
+	} else if !strings.Contains(err.Error(), "NUT87") {
+		t.Errorf("ModelByName(NUT60) error %q does not name the known Models", err)
+	}
+}
